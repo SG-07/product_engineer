@@ -1,0 +1,22 @@
+# Python
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets and local data
+.env
+*.db
+*.db-wal
+*.db-shm
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Frontend (has its own .gitignore too)
+frontend/node_modules/
+frontend/dist/

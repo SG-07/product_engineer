@@ -1,0 +1,25 @@
+# Render Blueprint. Python native runtime - no Docker.
+# Create via: Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: transaction-webhook-service
+    runtime: python
+    rootDir: backend                # all backend code lives in backend/
+    plan: free                      # free instances sleep after ~15 min idle - see docs/risks.md
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DATABASE_URL           # Supabase *session pooler* string; set in the dashboard
+        sync: false
+      - key: WEBHOOK_SECRET         # optional; set in the dashboard
+        sync: false
+      - key: CORS_ORIGINS           # frontend origin(s), comma-separated
+        value: http://localhost:5173
+      - key: PROCESSING_DELAY_SECONDS
+        value: "30"
+      - key: SIGNATURE_REQUIRED
+        value: "false"
