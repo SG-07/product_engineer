@@ -13,14 +13,14 @@ Last updated: 2026-11-03
 | 2 | Persistence + idempotency (+ read endpoints, currency display) | 🟡 | Passes on **SQLite** only. Postgres path (`ON CONFLICT`, asyncpg, Supabase SSL/pooler URL handling) has never run. |
 | 3 | Processing + reliability (lease, retries, sweeper, shutdown) | 🟡 | Real-process tests passed on SQLite: 30 s flow via `smoke_test.py`; hard-kill → restart → finished (123 s). Not run on Postgres. |
 | 4 | Hardening (HMAC, CORS, logging, error handlers) | ✅ | `test_signature`, CORS preflight test. Only tested with self-generated signatures, never real RazorPay ones. |
-| 5 | Tests + CI | 🟡 | 70 passed, 1 skipped locally. CI workflow written but **never run** (no GitHub repo yet). Skipped test = concurrent-latency test, needs Postgres. |
+| 5 | Tests + CI | ✅ | 71 passed, 1 skipped locally (SQLite). GitHub Actions run on Postgres 16 container: **passed** (2026-11-03). Latency figures from that run were not read (log needs auth). |
 | 6 | Deploy (Supabase + Render) | 👤 | See "Owner actions". `render.yaml` unverified (`PYTHON_VERSION` value in particular). |
 | 7 | Docs + hand-off | 🟡 | Docs written; `README` live URL placeholder to fill; `frontend.md` ready for the frontend developer. |
 | F | Frontend (other developer) | ⏳ | `frontend/` has an untouched Vite + React scaffold. Spec in `docs/frontend.md`. |
 
 ## Owner actions (only you can do these)
 
-- [ ] Create public GitHub repo, make the first commit, push.
+- [x] GitHub repo: https://github.com/SG-07/product_engineer (pushed, CI green).
 - [ ] Create Supabase project → copy the **Session pooler** connection string.
 - [ ] Create Render web service from the repo (Blueprint) and set `DATABASE_URL` (+ optional `WEBHOOK_SECRET`).
 - [ ] Run `python scripts/smoke_test.py --base-url <render url>` and `scripts/load_test.py` against it. **This is the first real Postgres test - expect to possibly fix something.**
@@ -38,7 +38,8 @@ Last updated: 2026-11-03
 | 2026-11-03 | Cold-start: first webhook on 3 fresh processes | 13–33 ms (127.0.0.1) |
 | 2026-11-03 | Hard kill (TerminateProcess) 3 s after webhook, restart | row survived as PROCESSING; finished as PROCESSED, attempts = 2, **123 s** after restart |
 | 2026-11-03 | 20 concurrent senders on SQLite | p95 ≈ 1.1–1.6 s - SQLite single-writer limit, see `risks.md` R1. **Not measured on Postgres.** |
-| — | Anything on PostgreSQL / Render / GitHub Actions | **not yet run** |
+| 2026-11-03 | GitHub Actions: full suite on a Postgres 16 service container | passed (first Postgres run). Local container, so no network latency - not representative of Supabase |
+| — | Supabase / Render deployment | **not yet run** |
 
 ## Changes made along the way
 
