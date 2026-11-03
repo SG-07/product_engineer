@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import repository as repo
 from app.config import Settings
-from app.deps import get_processor, get_session, get_settings_dep
+from app.deps import get_metrics, get_processor, get_session, get_settings_dep
+from app.metrics import Metrics
 from app.models import Transaction
 from app.processor import Processor
 from app.schemas import ErrorResponse, WebhookAck, WebhookTransactionIn
@@ -61,6 +62,7 @@ async def receive_transaction_webhook(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
     processor: Processor = Depends(get_processor),
+    metrics: Metrics = Depends(get_metrics),
 ):
     body = await request.body()  # raw bytes are needed for the HMAC check
 
@@ -68,11 +70,13 @@ async def receive_transaction_webhook(
         verify_signature(body, request.headers.get(settings.signature_header), settings)
     except SignatureError as exc:
         log.warning("rejected webhook: %s", exc)
+        metrics.note("rejected")
         return JSONResponse(status_code=401, content={"detail": str(exc)})
 
     try:
         payload = WebhookTransactionIn.model_validate_json(body)
     except ValidationError as exc:
+        metrics.note("rejected")
         raise RequestValidationError(exc.errors(include_url=False, include_context=False)) from exc
 
     try:
@@ -95,11 +99,13 @@ async def receive_transaction_webhook(
 
     if created:
         processor.schedule(payload.transaction_id)
+        metrics.note("accepted")
         log.info("accepted %s", payload.transaction_id)
         return WebhookAck(status="accepted", transaction_id=payload.transaction_id)
 
     if existing is not None and not _same_payload(existing, payload):
         log.warning("conflicting duplicate for %s", payload.transaction_id)
+        metrics.note("conflict")
         return JSONResponse(
             status_code=409,
             content={
@@ -108,5 +114,6 @@ async def receive_transaction_webhook(
             },
         )
 
+    metrics.note("duplicate")
     log.info("duplicate %s ignored (status=%s)", payload.transaction_id, existing.status if existing else "?")
     return WebhookAck(status="duplicate", transaction_id=payload.transaction_id)

@@ -12,3 +12,5 @@ export const HEALTH_POLL_MS = 10000
 export const TXN_POLL_MS = 2000
 export const LIST_POLL_ACTIVE_MS = 3000
 export const LIST_POLL_IDLE_MS = 15000
+export const STATS_POLL_ACTIVE_MS = 3000
+export const STATS_POLL_IDLE_MS = 10000

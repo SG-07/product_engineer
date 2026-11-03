@@ -6,17 +6,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label } from '@/components/ui/input'
 import { Progress, Skeleton } from '@/components/ui/misc'
 import { EmptyState, Stat } from '@/components/common'
-import { getTransaction, sendWebhook } from '@/lib/api'
+import { listTransactions, sendWebhook } from '@/lib/api'
 import { randomPayload } from '@/lib/ids'
 import { sentStore } from '@/lib/sentStore'
 import { formatMs } from '@/lib/format'
 import { percentile, runWithConcurrency } from '@/lib/utils'
+import { useCurrency } from '@/hooks/useStores'
 import { LATENCY_BUDGET_MS, MAX_BATCH } from '@/config/app'
 
 // Recharts is large – load it only when a chart is needed.
 const LatencyChart = lazy(() => import('@/components/LatencyChart').then((m) => ({ default: m.LatencyChart })))
 
-const STATUS_CHECK_MS = 10000
+const STATUS_CHECK_MS = 5000
 
 /** Fires N unique webhooks concurrently and reports latency vs the 500 ms budget. */
 export function LoadTest() {
@@ -25,6 +26,7 @@ export function LoadTest() {
   const [run, setRun] = useState(null) // { ids, results, done, startedAt, totalMs }
   const [processed, setProcessed] = useState({ checked: false, done: 0, checking: false, tracking: false })
   const queryClient = useQueryClient()
+  const { currency } = useCurrency()
   const running = run && !run.done
   const trackingRef = useRef(false)
 
@@ -47,6 +49,7 @@ export function LoadTest() {
     const accepted = payloads.filter((_, i) => all[i].ok).map((p) => ({ transaction_id: p.transaction_id, kind: 'load' }))
     sentStore.addMany(accepted)
     queryClient.invalidateQueries({ queryKey: ['txns'] })
+    queryClient.invalidateQueries({ queryKey: ['stats'] })
     setRun((r) => ({ ...r, done: true, totalMs: performance.now() - t0 }))
     trackingRef.current = accepted.length > 0
     setProcessed((p) => ({ ...p, tracking: accepted.length > 0 }))
@@ -61,10 +64,12 @@ export function LoadTest() {
 
     async function check() {
       setProcessed((p) => ({ ...p, checking: true }))
-      const pending = acceptedIds.filter((id) => !doneSet.has(id))
-      const res = await runWithConcurrency(pending.map((id) => () => getTransaction(id, { tag: 'poll' })), 10)
-      res.forEach((r, i) => {
-        if (r.records[0]?.status === 'PROCESSED') doneSet.add(pending[i])
+      // One list request (newest 100) instead of one GET per transaction: easy on the small DB pool.
+      const res = await listTransactions({ limit: 100, currency }, { tag: 'poll' })
+      const byId = new Map(res.records.map((r) => [r.transaction_id, r.status]))
+      acceptedIds.forEach((id) => {
+        const status = byId.get(id)
+        if (status === 'PROCESSED' || status === 'FAILED') doneSet.add(id)
       })
       if (cancelled) return
       const allDone = doneSet.size === acceptedIds.length
@@ -141,7 +146,7 @@ export function LoadTest() {
                   <span className="font-medium">Background processing</span>
                   <span className="text-muted-foreground flex items-center gap-2 tabular-nums">
                     {processed.checking && <LoaderCircle className="size-3 animate-spin" />}
-                    {processed.checked ? `${processed.done}/${ok.length} processed` : 'First check in a moment…'}
+                    {processed.checked ? `${processed.done}/${ok.length} finished` : 'First check in a moment…'}
                     {processed.tracking && (
                       <Button
                         size="sm"

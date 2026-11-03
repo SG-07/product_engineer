@@ -20,3 +20,4 @@ Thumbs.db
 # Frontend (has its own .gitignore too)
 frontend/node_modules/
 frontend/dist/
+.gstack/

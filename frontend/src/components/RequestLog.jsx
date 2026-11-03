@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/misc'
 import { EmptyState, HttpStatusBadge, JsonView, LatencyBadge } from '@/components/common'
 import { useRequestLog } from '@/hooks/useStores'
 import { requestLog } from '@/lib/requestLog'
-import { formatTime } from '@/lib/format'
+import { formatMs, formatTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export function RequestLog({ open, onOpenChange }) {
@@ -73,6 +73,11 @@ function LogEntry({ entry }) {
           <div className="text-muted-foreground flex flex-wrap gap-2 text-xs">
             <span>{entry.mock ? 'Mock API' : 'Live backend'}</span>
             {entry.tag && <span>· {entry.tag}</span>}
+            {entry.serverMs != null && (
+              <span>
+                · server {formatMs(entry.serverMs)} + network {formatMs(entry.networkMs)}
+              </span>
+            )}
             <span>· {new Date(entry.startedAt).toLocaleString()}</span>
           </div>
           {entry.error && <div className="text-destructive text-xs">{entry.error}</div>}

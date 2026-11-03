@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Database, RefreshCw, Search, TriangleAlert } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogDescription, DialogTitle, SheetContent } from '@/components/ui/dialog'
 import { Input, NativeSelect } from '@/components/ui/input'
-import { Skeleton, Tooltip } from '@/components/ui/misc'
+import { Skeleton } from '@/components/ui/misc'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { CopyButton, EmptyState, JsonView, Money, StatusBadge } from '@/components/common'
 import { useTransactions } from '@/hooks/useApi'
@@ -29,15 +28,10 @@ export function TransactionsTable() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Transactions
-          {data?.source === 'local' && (
-            <Tooltip content="GET /v1/transactions is not available on the backend yet – showing transactions sent from this browser.">
-              <Badge variant="warning" className="cursor-help">
-                <TriangleAlert /> local fallback
-              </Badge>
-            </Tooltip>
-          )}
         </CardTitle>
-        <CardDescription>Latest 50 · amounts shown in {currency} · auto-refreshes while any are processing.</CardDescription>
+        <CardDescription>
+          Latest {records.length} of {data?.total ?? 0} · amounts shown in {currency} · auto-refreshes while any are processing.
+        </CardDescription>
         <CardAction>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={isFetching ? 'animate-spin' : ''} /> Refresh
@@ -54,6 +48,7 @@ export function TransactionsTable() {
             <option value="">All statuses</option>
             <option value="PROCESSING">Processing</option>
             <option value="PROCESSED">Processed</option>
+            <option value="FAILED">Failed</option>
           </NativeSelect>
         </div>
 
@@ -97,7 +92,7 @@ export function TransactionsTable() {
                         {r.source_account} → {r.destination_account}
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        <Money amountInr={r.amount} />
+                        <Money record={r} showOriginal />
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={r.status} />
@@ -120,7 +115,7 @@ export function TransactionsTable() {
 }
 
 function TransactionDetail({ record, onClose }) {
-  const { currency, format } = useCurrency()
+  const { currency } = useCurrency()
   const d = record ? durationSeconds(record.created_at, record.processed_at) : null
   return (
     <Dialog open={!!record} onOpenChange={(o) => !o && onClose()}>
@@ -136,9 +131,21 @@ function TransactionDetail({ record, onClose }) {
             <dt className="text-muted-foreground">Status</dt>
             <dd><StatusBadge status={record.status} /></dd>
             <dt className="text-muted-foreground">Amount ({currency})</dt>
-            <dd className="font-medium tabular-nums">{format(record.amount)}</dd>
-            <dt className="text-muted-foreground">Amount (stored)</dt>
-            <dd className="tabular-nums">{formatCurrency(record.amount, 'INR')}</dd>
+            <dd className="font-medium tabular-nums">{formatCurrency(record.amount, record.currency)}</dd>
+            <dt className="text-muted-foreground">Received as</dt>
+            <dd className="tabular-nums">{formatCurrency(record.original_amount, record.original_currency)}</dd>
+            <dt className="text-muted-foreground">Stored (INR)</dt>
+            <dd className="tabular-nums">{record.amount_inr != null ? formatCurrency(record.amount_inr, 'INR') : '— (not converted yet)'}</dd>
+            <dt className="text-muted-foreground">FX rate</dt>
+            <dd className="tabular-nums">{record.fx_rate_to_inr != null ? `1 ${record.original_currency} = ${record.fx_rate_to_inr} INR (as of ${record.fx_rate_as_of})` : '—'}</dd>
+            <dt className="text-muted-foreground">Attempts</dt>
+            <dd className="tabular-nums">{record.attempts}</dd>
+            {record.last_error && (
+              <>
+                <dt className="text-muted-foreground">Last error</dt>
+                <dd className="text-destructive text-xs">{record.last_error}</dd>
+              </>
+            )}
             <dt className="text-muted-foreground">Source</dt>
             <dd className="font-mono text-xs">{record.source_account}</dd>
             <dt className="text-muted-foreground">Destination</dt>

@@ -13,12 +13,15 @@ import { API_BASE_URL } from '@/lib/api'
 import { resetMockDb } from '@/lib/mockApi'
 import { prefsStore } from '@/lib/prefsStore'
 import { sentStore } from '@/lib/sentStore'
-import { CURRENCIES, CURRENCY_CODES, RATES_FROM_INR, RATES_UPDATED_AT } from '@/config/currency'
+import { CURRENCIES, CURRENCY_CODES } from '@/config/currency'
+import { useCurrencies } from '@/hooks/useApi'
 import { formatCurrency } from '@/lib/format'
 
 export default function Settings() {
   const [prefs, setPrefs] = usePreferences()
   const queryClient = useQueryClient()
+  const { data: currencyData } = useCurrencies()
+  const rates = currencyData?.currencies?.rates_to_inr
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -30,7 +33,7 @@ export default function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Display currency</CardTitle>
-          <CardDescription>Amounts are stored in INR and converted for display using fixed rates.</CardDescription>
+          <CardDescription>Amounts are stored in INR. The backend converts and rounds them for display (fixed rates).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <CurrencyOptions
@@ -45,8 +48,7 @@ export default function Settings() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Currency</TableHead>
-                  <TableHead className="text-right">1 INR =</TableHead>
-                  <TableHead className="text-right">₹1,000 =</TableHead>
+                  <TableHead className="text-right">Rate (from the backend)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -56,15 +58,14 @@ export default function Settings() {
                       {CURRENCIES[code].flag} {code}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {RATES_FROM_INR[code]} {code}
+                      {rates?.[code] != null ? `1 ${code} = ${formatCurrency(rates[code], 'INR')}` : '—'}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(1000 * RATES_FROM_INR[code], code)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
-          <p className="text-muted-foreground text-xs">Rates are fixed as of {RATES_UPDATED_AT} (src/config/currency.js).</p>
+          <p className="text-muted-foreground text-xs">{currencyData?.currencies ? `Rates are fixed as of ${currencyData.currencies.as_of} (served by GET /v1/currencies, not live).` : 'Rates unavailable: could not reach GET /v1/currencies.'}</p>
         </CardContent>
       </Card>
 

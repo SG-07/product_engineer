@@ -64,6 +64,7 @@ To iterate faster set `PROCESSING_DELAY_SECONDS=2` in a `.env` file (copy `backe
 | `GET /v1/transactions/{id}?currency=` | Transaction status (single object) | `200` / `404` |
 | `GET /v1/transactions?status=&currency=&limit=&offset=` | List, newest first | `200` |
 | `GET /v1/currencies` | Supported currencies + the fixed rates in use | `200` |
+| `GET /v1/stats` | Live counts, server-side latency, DB pool usage (for the dashboard) | `200` |
 | `GET /health/ready` | Health check that also pings the database | `200` / `503` |
 
 Error codes: `401` bad signature · `404` unknown id · `409` same id, different payload · `422` invalid input · `503` storage unavailable. Full contract with examples: [docs/api.md](docs/api.md).

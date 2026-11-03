@@ -2,8 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { prefsStore } from '@/lib/prefsStore'
 import { requestLog } from '@/lib/requestLog'
 import { sentStore } from '@/lib/sentStore'
-import { convertFromInr, formatCurrency } from '@/lib/format'
-import { CURRENCIES, RATES_FROM_INR } from '@/config/currency'
+import { CURRENCIES } from '@/config/currency'
 
 export function usePreferences() {
   const prefs = useSyncExternalStore(prefsStore.subscribe, prefsStore.get)
@@ -13,18 +12,11 @@ export function usePreferences() {
 export const useRequestLog = () => useSyncExternalStore(requestLog.subscribe, requestLog.get)
 export const useSentTransactions = () => useSyncExternalStore(sentStore.subscribe, sentStore.get)
 
-/** Display-currency helpers. Amounts from the backend are always INR. */
+/** Display-currency preference. The backend converts: every read sends ?currency=<this>. */
 export function useCurrency() {
   const [prefs, setPrefs] = usePreferences()
   const currency = prefs.currency || 'INR'
-  return {
-    currency,
-    meta: CURRENCIES[currency],
-    rate: RATES_FROM_INR[currency],
-    setCurrency: (code) => setPrefs({ currency: code }),
-    convert: (amountInr) => convertFromInr(amountInr, currency),
-    format: (amountInr) => formatCurrency(convertFromInr(amountInr, currency), currency),
-  }
+  return { currency, meta: CURRENCIES[currency], setCurrency: (code) => setPrefs({ currency: code }) }
 }
 
 /** Applies the theme preference to <html> and follows the OS when set to "system". */

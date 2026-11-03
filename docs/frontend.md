@@ -1,6 +1,8 @@
 # Frontend Hand-off: "Webhook Tester Dashboard"
 
-**Audience:** the developer building the UI. **Owner of the backend:** see `README.md`. **Not built by the backend work** - this is a spec.
+**Audience:** the developer building the UI. **Owner of the backend:** see `README.md`.
+
+> **Status (2026-11-04):** the dashboard in `frontend/` is implemented against this spec. Added since the first draft: a live status strip (`GET /v1/stats`), a live pipeline board (Processing / Processed / Failed with a countdown), and a latency panel comparing browser-measured time with the server's `X-Response-Time-Ms`. Polling is kept light on purpose (the API DB pool is small): stats every 3 s while work is processing else 10 s, the list every 3 s / 15 s, health 10 s, all paused when the tab is hidden; the load test checks status with one list request instead of one request per transaction. Run it with `VITE_USE_MOCK=false VITE_API_BASE_URL=<backend>` (mock mode is the default). The rest of this file is the original spec.
 
 ## 1. Goal
 A small dashboard to demo and inspect the webhook service: send test webhooks, watch them move from `PROCESSING` to `PROCESSED`, see duplicates being ignored, and view money in the viewer's preferred currency (INR / USD / EUR / GBP).
@@ -28,6 +30,7 @@ Full reference: `docs/api.md`. Summary:
 | `GET /v1/transactions/{id}?currency=XXX` | one transaction (single object); `404` if unknown |
 | `GET /v1/transactions?status=&currency=&limit=&offset=` | table data → `{items,total,limit,offset}` |
 | `GET /v1/currencies` | supported currencies + rates + `as_of` date |
+| `GET /v1/stats` | live counts, server-side latency, DB pool use (see `docs/api.md`) |
 
 Transaction object (display fields first):
 `amount`, `currency` (what to show) · `original_amount`, `original_currency` · `amount_inr`, `fx_rate_to_inr`, `fx_rate_as_of` (null until processed) · `status` = `PROCESSING|PROCESSED|FAILED` · `attempts`, `last_error` · `created_at`, `processed_at` (null until processed).

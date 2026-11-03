@@ -17,12 +17,14 @@ export function TransactionTracker({ transactionId, sentAt, onRemove, className,
   const records = data?.records ?? []
   const record = records[0]
   const processed = record?.status === 'PROCESSED'
-  const now = useNow(1000, !processed)
+  const failed = record?.status === 'FAILED'
+  const terminal = processed || failed
+  const now = useNow(1000, !terminal)
 
   const expected = expectedProcessingSeconds()
   const elapsed = Math.max(0, (now - sentAt) / 1000)
-  const progress = processed ? 100 : Math.min(99, (elapsed / expected) * 100)
-  const overdue = !processed && elapsed > expected + 15
+  const progress = terminal ? 100 : Math.min(99, (elapsed / expected) * 100)
+  const overdue = !terminal && elapsed > expected + 15
   const took = processed ? durationSeconds(record.created_at, record.processed_at) : null
 
   return (
@@ -56,10 +58,14 @@ export function TransactionTracker({ transactionId, sentAt, onRemove, className,
         </div>
       </div>
 
-      <Progress value={progress} indicatorClassName={processed ? 'bg-success' : overdue ? 'bg-destructive' : 'bg-warning'} />
+      <Progress value={progress} indicatorClassName={processed ? 'bg-success' : failed || overdue ? 'bg-destructive' : 'bg-warning'} />
 
       <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
-        {processed ? (
+        {failed ? (
+          <span className="text-destructive">
+            Failed after {record.attempts} attempt(s){record.last_error ? ` · ${record.last_error}` : ''}
+          </span>
+        ) : processed ? (
           <span>
             Processed at {formatTime(record.processed_at)}
             {took != null && <> · took {took.toFixed(1)}s</>}
@@ -70,7 +76,7 @@ export function TransactionTracker({ transactionId, sentAt, onRemove, className,
             {Math.floor(elapsed)}s elapsed · ~{expected}s expected
           </span>
         )}
-        {record && <Money amountInr={record.amount} className="text-foreground font-medium" />}
+        {record && <Money record={record} className="text-foreground font-medium" />}
       </div>
 
       {data?.error && !data?.notFound && <div className="text-destructive text-xs">{data.error}</div>}

@@ -13,11 +13,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings, get_settings
 from app.db import Database
+from app.metrics import Metrics
 from app.processor import Processor
 from app.recovery import RecoverySweeper
-from app.routers import currencies, health, transactions, webhooks
+from app.routers import currencies, health, stats, transactions, webhooks
 
 log = logging.getLogger("app")
+
+LATENCY_BUDGET_MS = 500.0  # the spec: acknowledge within 500 ms
+WEBHOOK_PATH = "/v1/webhooks/transactions"
 
 
 def _configure_logging(level: str) -> None:
@@ -50,6 +54,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.worker_db = worker_db
         app.state.processor = processor
         app.state.sweeper = sweeper
+        app.state.metrics = Metrics(budget_ms=LATENCY_BUDGET_MS)
+        app.state.stats_cache = None
 
         if settings.sweeper_enabled:
             sweeper.start()  # first sweep runs immediately: resumes work from before a restart
@@ -88,6 +94,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         elapsed_ms = (time.perf_counter() - start) * 1000
         response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
+        if request.method == "POST" and request.url.path == WEBHOOK_PATH:
+            request.app.state.metrics.record_ack(elapsed_ms)
         if request.url.path != "/":
             log.info("%s %s -> %s in %.1fms", request.method, request.url.path, response.status_code, elapsed_ms)
         return response
@@ -106,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhooks.router)
     app.include_router(transactions.router)
     app.include_router(currencies.router)
+    app.include_router(stats.router)
     return app
 
 

@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import utcnow
+from app.db import as_utc, utcnow
 from app.models import Transaction, TxnStatus
 
 
@@ -216,3 +216,26 @@ async def find_stale(session: AsyncSession, *, unclaimed_after: float, limit: in
         .limit(limit)
     )
     return list(await session.scalars(stmt))
+
+
+async def status_counts(session: AsyncSession) -> dict[str, int]:
+    rows = await session.execute(select(Transaction.status, func.count()).group_by(Transaction.status))
+    return {status: int(n) for status, n in rows}
+
+
+async def oldest_processing_created_at(session: AsyncSession) -> datetime | None:
+    value = await session.scalar(
+        select(func.min(Transaction.created_at)).where(Transaction.status == TxnStatus.PROCESSING)
+    )
+    return as_utc(value)
+
+
+async def recent_processing_durations(session: AsyncSession, n: int = 50) -> list[float]:
+    """Seconds from created to processed for the latest `n` PROCESSED rows (computed in Python: portable)."""
+    rows = await session.execute(
+        select(Transaction.created_at, Transaction.processed_at)
+        .where(Transaction.status == TxnStatus.PROCESSED, Transaction.processed_at.is_not(None))
+        .order_by(Transaction.processed_at.desc())
+        .limit(n)
+    )
+    return [(as_utc(done) - as_utc(created)).total_seconds() for created, done in rows]

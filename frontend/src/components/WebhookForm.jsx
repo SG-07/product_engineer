@@ -4,13 +4,15 @@ import { toast } from 'sonner'
 import { RefreshCw, Send, Shuffle, Inbox } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input, Label } from '@/components/ui/input'
+import { Input, Label, NativeSelect } from '@/components/ui/input'
 import { EmptyState, HttpStatusBadge, LatencyBadge } from '@/components/common'
 import { TransactionTracker } from '@/components/TransactionTracker'
-import { useCurrency, useSentTransactions } from '@/hooks/useStores'
+import { useSentTransactions } from '@/hooks/useStores'
 import { sendWebhook } from '@/lib/api'
 import { newTransactionId, randomPayload } from '@/lib/ids'
 import { sentStore } from '@/lib/sentStore'
+import { formatMs } from '@/lib/format'
+import { CURRENCY_CODES } from '@/config/currency'
 
 const initialForm = () => ({ ...randomPayload(), amount: '1500' })
 
@@ -19,7 +21,6 @@ export function WebhookForm() {
   const [errors, setErrors] = useState({})
   const [sending, setSending] = useState(false)
   const [last, setLast] = useState(null)
-  const { currency, format } = useCurrency()
   const queryClient = useQueryClient()
   const sent = useSentTransactions().filter((s) => s.kind === 'single').slice(0, 6)
 
@@ -46,7 +47,7 @@ export function WebhookForm() {
       source_account: form.source_account.trim(),
       destination_account: form.destination_account.trim(),
       amount: Number(form.amount),
-      currency: 'INR',
+      currency: form.currency,
     }
     const res = await sendWebhook(payload)
     setSending(false)
@@ -55,14 +56,14 @@ export function WebhookForm() {
     if (res.ok) {
       sentStore.add({ transaction_id: payload.transaction_id, kind: 'single' })
       queryClient.invalidateQueries({ queryKey: ['txns'] })
-      toast.success(`Webhook accepted (${res.status})`, { description: payload.transaction_id })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      const duplicate = res.data?.status === 'duplicate'
+      toast.success(duplicate ? `Duplicate ignored (${res.status})` : `Webhook accepted (${res.status})`, { description: payload.transaction_id })
       setForm((f) => ({ ...f, transaction_id: newTransactionId() }))
     } else {
       toast.error(`Webhook failed${res.status ? ` (${res.status})` : ''}`, { description: res.error })
     }
   }
-
-  const amountPreview = Number(form.amount) > 0 && currency !== 'INR' ? `≈ ${format(Number(form.amount))}` : null
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -95,11 +96,17 @@ export function WebhookForm() {
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-              <Field label="Amount (₹ INR)" error={errors.amount} hint={amountPreview} htmlFor="amount">
+              <Field label="Amount" error={errors.amount} htmlFor="amount">
                 <Input id="amount" inputMode="decimal" value={form.amount} onChange={update('amount')} aria-invalid={!!errors.amount} />
               </Field>
-              <Field label="Currency" hint="Stored in INR" htmlFor="currency">
-                <Input id="currency" value="INR" disabled readOnly />
+              <Field label="Currency sent" hint="Stored as INR" htmlFor="currency">
+                <NativeSelect id="currency" value={form.currency} onChange={update('currency')}>
+                  {CURRENCY_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </NativeSelect>
               </Field>
             </div>
             <Button type="submit" className="w-full" disabled={sending}>
@@ -111,6 +118,8 @@ export function WebhookForm() {
                 <span className="text-muted-foreground">Last response:</span>
                 <HttpStatusBadge status={last.status} />
                 <LatencyBadge ms={last.latencyMs} />
+                {last.serverMs != null && <span className="text-muted-foreground text-xs">server {formatMs(last.serverMs)}</span>}
+                {last.data?.status && <span className="text-xs font-medium">{last.data.status}</span>}
                 <code className="text-muted-foreground truncate text-xs">{last.transaction_id}</code>
                 {last.error && <span className="text-destructive w-full text-xs">{last.error}</span>}
               </div>

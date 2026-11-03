@@ -1,21 +1,32 @@
 import { useState } from 'react'
-import { Check, Copy, LoaderCircle, CircleCheck } from 'lucide-react'
+import { Check, Copy, LoaderCircle, CircleCheck, CircleX } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/misc'
-import { useCurrency } from '@/hooks/useStores'
 import { formatCurrency, formatMs } from '@/lib/format'
 import { LATENCY_BUDGET_MS } from '@/config/app'
-import { RATES_UPDATED_AT } from '@/config/currency'
 import { cn } from '@/lib/utils'
 
-/** Renders an INR amount in the user's preferred currency (tooltip shows the INR original). */
-export function Money({ amountInr, className }) {
-  const { currency, format } = useCurrency()
-  const text = format(amountInr)
-  if (currency === 'INR') return <span className={cn('tabular-nums', className)}>{text}</span>
+/**
+ * Shows the backend's already-converted, already-rounded `amount` in `currency`.
+ * Nothing is computed here. When the webhook arrived in another currency, the
+ * original is shown as secondary text (showOriginal) or in a tooltip.
+ */
+export function Money({ record, showOriginal = false, className }) {
+  if (!record) return null
+  const text = formatCurrency(record.amount, record.currency)
+  const differs = record.original_currency && record.original_currency !== record.currency
+  if (!differs) return <span className={cn('tabular-nums', className)}>{text}</span>
+  const original = `received as ${formatCurrency(record.original_amount, record.original_currency)}`
+  if (showOriginal)
+    return (
+      <span className={cn('tabular-nums', className)}>
+        {text}
+        <span className="text-muted-foreground block text-xs font-normal">{original}</span>
+      </span>
+    )
   return (
-    <Tooltip content={`${formatCurrency(amountInr, 'INR')} · fixed rate as of ${RATES_UPDATED_AT}`}>
+    <Tooltip content={`${original}${record.fx_rate_as_of ? ` · fixed rate as of ${record.fx_rate_as_of}` : ''}`}>
       <span className={cn('tabular-nums underline decoration-dotted decoration-muted-foreground/50 underline-offset-4 cursor-help', className)}>
         {text}
       </span>
@@ -34,6 +45,12 @@ export function StatusBadge({ status }) {
     return (
       <Badge variant="warning">
         <LoaderCircle className="animate-spin" /> PROCESSING
+      </Badge>
+    )
+  if (status === 'FAILED')
+    return (
+      <Badge variant="destructive">
+        <CircleX /> FAILED
       </Badge>
     )
   return <Badge variant="outline">{status || 'UNKNOWN'}</Badge>

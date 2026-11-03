@@ -4,6 +4,9 @@ import { WebhookForm } from '@/components/WebhookForm'
 import { IdempotencyTest } from '@/components/IdempotencyTest'
 import { LoadTest } from '@/components/LoadTest'
 import { TransactionsTable } from '@/components/TransactionsTable'
+import { LiveStats } from '@/components/LiveStats'
+import { LiveLatency } from '@/components/LiveLatency'
+import { LivePipeline } from '@/components/LivePipeline'
 
 export default function Dashboard() {
   return (
@@ -13,6 +16,13 @@ export default function Dashboard() {
         <p className="text-muted-foreground text-sm">
           Send transaction webhooks, watch background processing, and verify idempotency and response times.
         </p>
+      </div>
+
+      <LiveStats />
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <LivePipeline />
+        <LiveLatency />
       </div>
 
       <Tabs defaultValue="send">

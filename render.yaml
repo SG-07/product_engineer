@@ -19,6 +19,10 @@ services:
         sync: false
       - key: CORS_ORIGINS           # frontend origin(s), comma-separated
         value: http://localhost:5173
+      - key: API_DB_POOL_SIZE       # small on purpose; keep only if load_test.py is no worse than 5+5
+        value: "2"
+      - key: API_DB_MAX_OVERFLOW
+        value: "1"
       - key: PROCESSING_DELAY_SECONDS
         value: "30"
       - key: SIGNATURE_REQUIRED

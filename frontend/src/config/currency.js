@@ -1,8 +1,8 @@
 /**
  * Currency configuration.
- * The backend stores every amount in INR (decimal rupees). The frontend converts
- * to the user's preferred display currency using the fixed rates below.
- * Update RATES_FROM_INR / RATES_UPDATED_AT to refresh the rates.
+ * The backend stores amounts in INR and does all conversion and rounding
+ * (GET ...?currency=). This file only holds display metadata; rates come from
+ * GET /v1/currencies.
  */
 export const BASE_CURRENCY = 'INR'
 
@@ -14,13 +14,3 @@ export const CURRENCIES = {
 }
 
 export const CURRENCY_CODES = Object.keys(CURRENCIES)
-
-/** 1 INR = X <currency> */
-export const RATES_FROM_INR = {
-  INR: 1,
-  USD: 0.012,
-  EUR: 0.011,
-  GBP: 0.0095,
-}
-
-export const RATES_UPDATED_AT = '2026-11-01'

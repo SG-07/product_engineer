@@ -81,3 +81,9 @@ One table, one day. `create_all` is idempotent; `schema.sql` is the reference. *
 
 ## D20 - SQLite supported for local dev/tests  *(engineering)*
 Zero-setup tests. The same repository code runs on both via dialect-specific `INSERT ... ON CONFLICT`. **Not used to judge performance** (single writer) - latency claims need Postgres (R1).
+
+## D21 - Live dashboard by polling a small `/v1/stats` endpoint; small DB pool  *(confirmed)*
+**What:** the UI polls `GET /v1/stats` (3 s while anything is processing, else 10 s) plus the list endpoint. Stats = one cheap `GROUP BY` (cached 1 s) + in-memory counters (latency of the last 200 webhooks, outcomes). The API DB pool is set to 2 + 1 overflow via `API_DB_POOL_SIZE` / `API_DB_MAX_OVERFLOW` (env only; code defaults stay 5 + 5).
+**Alternatives:** Server-Sent Events / WebSocket (push) - rejected: a held connection per viewer on a single free instance, more moving parts, little gain at 3 s freshness. Compute everything in the browser from the list endpoint - rejected: cannot show server-side latency, in-flight jobs or pool use.
+**Why in-memory latency:** recording is O(1) with no await and no DB, so it cannot slow the 500 ms path. Server time vs client-measured time shows how much of any slowness is network.
+**Cost:** counters reset on restart and are per instance; `/v1/stats` is unauthenticated (R9). **Pool 2 + 1 is an experiment:** keep it only if the load test (R1) is no worse than 5 + 5.

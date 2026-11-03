@@ -92,3 +92,51 @@ class CurrenciesOut(BaseModel):
     as_of: date
     display_decimals: int
     rounding: str
+
+
+class AckLatency(BaseModel):
+    p50: float | None
+    p95: float | None
+    max: float | None
+
+
+class WebhookStats(BaseModel):
+    window: int = Field(description="How many recent acknowledgements the latency numbers cover (max 200).")
+    accepted: int
+    duplicate: int
+    conflict: int
+    rejected: int
+    ack_ms: AckLatency = Field(description="Server-side time to answer a webhook, excluding network.")
+    over_budget_pct: float
+    per_minute: int
+
+
+class TransactionCounts(BaseModel):
+    processing: int
+    processed: int
+    failed: int
+    total: int
+
+
+class DbStats(BaseModel):
+    api_pool_max: int
+    api_in_use: int | None
+    worker_pool_max: int
+    worker_in_use: int | None
+
+
+class StatsConfig(BaseModel):
+    processing_delay_seconds: float
+    latency_budget_ms: float
+
+
+class StatsOut(BaseModel):
+    as_of: Timestamp
+    uptime_seconds: float
+    transactions: TransactionCounts
+    in_flight_jobs: int
+    oldest_processing_age_seconds: float | None
+    avg_processing_seconds: float | None = Field(description="Mean of the latest 50 processed transactions.")
+    webhooks: WebhookStats
+    db: DbStats
+    config: StatsConfig

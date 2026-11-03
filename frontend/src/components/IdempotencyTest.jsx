@@ -43,11 +43,14 @@ export function IdempotencyTest() {
       sentStore.add({ transaction_id: payload.transaction_id, kind: 'idempotency', sentAt })
       queryClient.invalidateQueries({ queryKey: ['txns'] })
     }
+    queryClient.invalidateQueries({ queryKey: ['stats'] })
     setRun((r) => ({ ...r, done: true }))
   }
 
   const results = run ? [...run.results].sort((a, b) => a.i - b.i) : []
   const okCount = results.filter((r) => r.status >= 200 && r.status < 300).length
+  const created = results.filter((r) => r.data?.status === 'accepted').length
+  const duplicates = results.filter((r) => r.data?.status === 'duplicate').length
   const latencies = results.map((r) => r.latencyMs)
   const maxLatency = latencies.length ? Math.max(...latencies) : null
 
@@ -78,8 +81,9 @@ export function IdempotencyTest() {
 
           {run ? (
             <>
-              <div className="grid grid-cols-3 gap-3">
-                <Stat label="Accepted" value={`${okCount}/${results.length}`} tone={results.length && okCount === results.length ? 'good' : results.length ? 'bad' : undefined} />
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat label="Responded 202" value={`${okCount}/${results.length}`} tone={results.length && okCount === results.length ? 'good' : results.length ? 'bad' : undefined} />
+                <Stat label="New / duplicate" value={`${created} / ${duplicates}`} hint="expect 1 new" tone={run.done ? (created === 1 ? 'good' : 'bad') : undefined} />
                 <Stat label="Max latency" value={formatMs(maxLatency)} tone={maxLatency == null ? undefined : maxLatency < LATENCY_BUDGET_MS ? 'good' : 'bad'} />
                 <Stat label="Mode" value={mode === 'parallel' ? 'Parallel' : 'Sequential'} />
               </div>
