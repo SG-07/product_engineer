@@ -2,7 +2,7 @@
 
 A React 19 + Vite 8 + Tailwind dashboard for the Transaction Webhook Service. Send test webhooks, watch them go from `PROCESSING` to `PROCESSED`, check idempotency and measure response times against the 500 ms limit.
 
-Full install, run and deployment instructions, including the backend and database, are in the **[main README](../README.md)**. This file is the quick reference for the frontend alone.
+How to run the backend and database is in the **[main README](../README.md)**; deployment is in [../docs/deployment.md](../docs/deployment.md) and every setting in [../docs/configuration.md](../docs/configuration.md). This file is the reference for the dashboard itself, including a guided tour.
 
 ## Quick start
 
@@ -40,17 +40,50 @@ Restart `npm run dev` after editing `.env`. For a deployed site these values are
 
 > **The Settings page overrides `.env`.** The "Use mock API" switch is saved in the browser. If you still see fake data after setting `VITE_USE_MOCK=false`, turn the switch off in **Settings** or clear the site's local storage.
 
-## Using it
+## Mock mode versus the live backend
 
-- **First visit:** pick a display currency (INR, USD, EUR, GBP). Change it any time in **Settings**. The backend converts the amounts.
-- **Send webhook** tab: send one webhook, see status and latency, and track it until it is processed.
-- **Idempotency** tab: *Identical* sends the same webhook several times (expect one accepted, the rest `duplicate`); *Conflict* sends changed fields for an existing id (expect `409`).
-- **Load test** tab: send many distinct webhooks at a chosen concurrency and read the min / average / p95 latency against the 500 ms budget.
-- **Status strip, pipeline board, latency panel:** live view of counts, in-flight jobs with a ~30 s countdown, and browser-measured versus server-measured time.
-- **Transactions table:** the 50 newest, filter by status or search, open a row for details.
-- **Request log** (button in the header): every HTTP call the page made, with status, time and body, useful when something looks wrong.
+| Mode | When | Notes |
+|---|---|---|
+| **Mock** (`VITE_USE_MOCK=true`, the default) | Working on the UI without a backend | Everything is simulated in the browser; no request reaches the server. Mock timings mean nothing for latency. Processing delay is `VITE_MOCK_PROCESSING_SECONDS` (default 30). |
+| **Live** (`VITE_USE_MOCK=false`) | Testing the real service | Calls `VITE_API_BASE_URL`. |
+
+## Dashboard areas
+
+On first visit a **currency picker** asks which currency to display (INR, USD, EUR or GBP). Change it later in **Settings**. Amounts are converted by the backend; the browser never does money arithmetic.
+
+| Area | What it shows or does |
+|---|---|
+| Header | Health badge (is the backend reachable), links to Dashboard and Settings, and the **request log** button that opens every HTTP call the page made (status, time, body). |
+| Status strip | Live counts of processing / processed / failed transactions, and DB pool use, from `GET /v1/stats`. |
+| Pipeline board | The newest transactions grouped as Processing / Processed / Failed. Processing ones count down towards ~30 s, then move across. |
+| Latency panel | Time per webhook as seen by the browser versus the server's own `X-Response-Time-Ms`; the median gap is the network overhead. Also shows the share of webhooks the server answered in over 500 ms. |
+| **Send webhook** tab | A form for one webhook (id, source, destination, amount, currency). Shows the HTTP status, the response and the latency, then tracks the transaction until it is `PROCESSED` or `FAILED`. |
+| **Idempotency** tab | Two scenarios, chosen from a dropdown. *Identical*: sends the same webhook N times; expect one accepted, the rest `duplicate`, and the transaction processed once. *Conflict*: sends an original, then the same id with changed fields; expect `409` for each change and the original kept. |
+| **Load test** tab | Sends N distinct webhooks (up to the page's batch limit) at a chosen concurrency and reports min / average / p95 latency, coloured against the 500 ms budget. |
+| Transactions table | The 50 newest transactions, filterable by status and searchable, with a detail panel per row. Refreshes automatically while anything is processing. |
+| Settings | Currency, theme (light / dark / system), the **mock API** switch, and a button to clear mock data. |
 
 The dashboard sends **unsigned** webhooks, so it only works against a backend with `SIGNATURE_REQUIRED=false` (the default). Never put a webhook secret in the frontend.
+
+## Guided tour (best way to use the whole program)
+
+Start the three pieces in this order, each in its own terminal: the database (Docker), the backend (`uvicorn` in `backend/`), then the dashboard (`npm run dev` here). Open **http://localhost:5173** and work through this once; it covers every part of the system.
+
+1. **Check the health badge.** Green "Healthy" means the dashboard reaches the backend. Red means it does not: see Troubleshooting below.
+2. **Pick a display currency** in the first-visit picker. It is saved in the browser and can be changed later in **Settings**.
+3. **Send one webhook** from the **Send webhook** tab. Note the `202` status and the latency. The Latency panel shows that number next to the 500 ms line.
+4. **Watch it move.** The pipeline board shows the transaction under *Processing* with a countdown. After about 30 s it moves to *Processed*, and the table shows its INR amount. The status strip counts it along the way.
+5. **Test idempotency.** In the **Idempotency** tab run *Identical*: expect one `accepted` and the rest `duplicate`, with the transaction processed once. Then run *Conflict*: expect `409` for the changed fields and the original kept.
+6. **Measure under load.** In the **Load test** tab run 20 webhooks at concurrency 1, then at concurrency 20, and compare p95 with the 500 ms line. Concurrency 20 sits near the line on a local machine, so repeat it about three times and read the median.
+7. **Explore the data.** The transactions table filters by status, searches by id, and opens a detail panel per row. Switch currency in **Settings** and the same row shows USD, EUR or GBP, with the original amount as secondary text.
+8. **Debug from the request log.** The **request log** button in the header lists every HTTP call the page made, with status, time and response body. Check it first when something looks wrong.
+9. **Script it if you want.** Open **http://127.0.0.1:8000/docs** for the interactive API reference, or use `scripts/send_webhook.py` from a terminal.
+
+Tips:
+
+- Open the dashboard at `http://localhost:5173` and point the backend URL at `127.0.0.1:8000`. Opening it at `127.0.0.1:5173` fails CORS.
+- Use the live backend, not mock mode, for any latency check.
+- On Render the first load can take about 40 s; wait before measuring.
 
 ## Commands
 

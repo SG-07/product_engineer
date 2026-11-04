@@ -2,7 +2,7 @@
 
 **Audience:** the developer building the UI. **Owner of the backend:** see `README.md`.
 
-> **Status (2026-11-04):** the dashboard in `frontend/` is implemented against this spec. Added since the first draft: a live status strip (`GET /v1/stats`), a live pipeline board (Processing / Processed / Failed with a countdown), and a latency panel comparing browser-measured time with the server's `X-Response-Time-Ms`. Polling is kept light on purpose (the API DB pool is small): stats every 3 s while work is processing else 10 s, the list every 3 s / 15 s, health 10 s, all paused when the tab is hidden; the load test checks status with one list request instead of one request per transaction. Run it with `VITE_USE_MOCK=false VITE_API_BASE_URL=<backend>` (mock mode is the default). Install, run, deploy and troubleshooting steps for the dashboard are in the main [README](../README.md) ("Install and run locally", "Using the dashboard", "Deploy the frontend") and in [frontend/README.md](../frontend/README.md). Note: the "Use mock API" switch in Settings is saved in the browser and overrides `VITE_USE_MOCK`. The rest of this file is the original spec.
+> **Status (2026-11-04):** the dashboard in `frontend/` is implemented against this spec. Added since the first draft: a live status strip (`GET /v1/stats`), a live pipeline board (Processing / Processed / Failed with a countdown), and a latency panel comparing browser-measured time with the server's `X-Response-Time-Ms`. Polling is kept light on purpose (the API DB pool is small): stats every 3 s while work is processing else 10 s, the list every 3 s / 15 s, health 10 s, all paused when the tab is hidden; the load test checks status with one list request instead of one request per transaction. Run it with `VITE_USE_MOCK=false VITE_API_BASE_URL=<backend>` (mock mode is the default). Install, run, deploy and troubleshooting steps for the dashboard are in the main [README](../README.md) ("Run and test the service"), [frontend/README.md](../frontend/README.md) (dashboard areas, guided tour, troubleshooting), [deployment.md](deployment.md) (deploying the frontend) and [configuration.md](configuration.md) (settings). Note: the "Use mock API" switch in Settings is saved in the browser and overrides `VITE_USE_MOCK`. The rest of this file is the original spec.
 
 ## 1. Goal
 A small dashboard to demo and inspect the webhook service: send test webhooks, watch them move from `PROCESSING` to `PROCESSED`, see duplicates being ignored, and view money in the viewer's preferred currency (INR / USD / EUR / GBP).
@@ -17,7 +17,7 @@ Suggested (optional) additions: `react-router-dom`, `@tanstack/react-query` (pol
 |---|---|---|
 | `VITE_API_BASE_URL` | `http://127.0.0.1:8000` or `https://txn-webhooks.onrender.com` | Backend base URL, no trailing slash |
 
-The dashboard also reads `VITE_USE_MOCK` (default `true`), `VITE_MOCK_PROCESSING_SECONDS` and `VITE_DEV_PROXY_TARGET`; see the main README. They are frontend-only and do not change the backend contract.
+The dashboard also reads `VITE_USE_MOCK` (default `true`), `VITE_MOCK_PROCESSING_SECONDS` and `VITE_DEV_PROXY_TARGET`; see [configuration.md](configuration.md). They are frontend-only and do not change the backend contract.
 
 Windows: prefer `127.0.0.1` over `localhost` for the backend URL (a `localhost` connection can stall ~2 s per request).
 Tell the backend owner your deployed origin so it is added to `CORS_ORIGINS`; until then, browser calls from it fail with a CORS error.

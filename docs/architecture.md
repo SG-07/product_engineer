@@ -83,5 +83,35 @@ Partial index on `(locked_until) WHERE status='PROCESSING'` keeps the sweeper ch
 | Two app instances | Lease + conditional updates prevent double processing | design only; **not tested** |
 | Bad / forged signature | `401`, nothing stored | `test_signature` |
 
+## Tools and versions
+
+Versions are the pins in `backend/requirements*.txt` and the ranges in `frontend/package.json`; a fresh `npm install` can pull newer minor versions.
+
+| Layer | Tool | Version | Used for |
+|---|---|---|---|
+| Language | Python | 3.12+ (Render pins 3.12.8) | backend |
+| Web framework | FastAPI | 0.115.6 | async API, request validation, auto-generated `/docs` |
+| ASGI server | Uvicorn (standard) | 0.34.0 | runs the app |
+| Validation and config | Pydantic, pydantic-settings | 2.10.4, 2.7.1 | strict webhook schemas, env-var settings |
+| Database access | SQLAlchemy (asyncio) | 2.0.36 | queries and conditional `UPDATE`s |
+| Postgres driver | asyncpg | 0.30.0 | async driver used in production and tests |
+| SQLite driver | aiosqlite | 0.20.0 | no-Docker fallback only (not valid for latency) |
+| Database | PostgreSQL | 16 | local (Docker), CI, and production (Supabase) |
+| Tests | pytest, pytest-asyncio, httpx | 8.3.4, 0.25.0, 0.28.1 | test suite and async test client |
+| Frontend | React | 19 (`^19.3.1`) | dashboard UI |
+| Build tool | Vite | 8 (`^8.3.5`) | dev server and production build |
+| Styling | Tailwind CSS | 4 (`^4.3.4`) | styling, with `tw-animate-css` for motion |
+| UI primitives | Radix UI, lucide-react, sonner | 1.x, 1.x, 2.x | accessible tabs and dialogs, icons, toast messages |
+| Data fetching | TanStack Query | 5 (`^5.105.3`) | polling for stats, pipeline and tables |
+| Routing | React Router | 7 | Dashboard and Settings pages |
+| Charts | Recharts | 3 (`^3.10.1`) | latency charts |
+| Linting | oxlint | 1.x | `npm run lint` |
+| Hosting (app) | Render | Blueprint, native Python runtime | backend web service and static dashboard |
+| Hosting (database) | Supabase | managed | PostgreSQL via the Session pooler |
+| Containers | Docker Desktop | current | local PostgreSQL 16 |
+| CI | GitHub Actions | — | full test suite on Postgres 16 on every push |
+| Source control | Git and GitHub | — | repository and CI trigger |
+| AI coding assistant | Claude Code | — | used to build, test and document the project |
+
 ## Scaling notes
 Not needed for this task, but known: tasks and sweeper live in the web process; to scale processing independently, replace `Processor.schedule` with a queue publish and run the processor in a worker (see `decisions.md` D3).

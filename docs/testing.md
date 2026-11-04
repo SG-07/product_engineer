@@ -10,6 +10,8 @@ pytest tests/test_idempotency.py    # one file
 python scripts/spec_check.py        # every requirement in backend_task.md vs a running server (~40 s)
 python scripts/smoke_test.py        # E2E vs a running server (~35 s, real 30 s wait)
 python scripts/load_test.py --n 200 --concurrency 20
+python scripts/delay_proxy.py 5433 5432 28   # distance replica: add ~57 ms round trip to the DB, then point DATABASE_URL at port 5433
+python scripts/dashboard_poller.py http://127.0.0.1:8000 75   # simulate the dashboard's polling while load_test.py runs (steps: test-results.md §10)
 
 # Quick check without Docker only (SQLite; not valid for latency):
 Remove-Item Env:TEST_DATABASE_URL; pytest -q -rs
@@ -17,6 +19,8 @@ Remove-Item Env:TEST_DATABASE_URL; pytest -q -rs
 ⚠ With `TEST_DATABASE_URL` the tests **delete all rows** in `transactions`. Use the throw-away `test` database, never the app database or production.
 CI runs the same suite on Postgres 16 on every push (`.github/workflows/`).
 Tests shrink the delays (`PROCESSING_DELAY_SECONDS≈0.3`, short lease/sweep) so the suite is fast; only `smoke_test.py` and the in-flight latency test use the real 30 s.
+`TEST_DATABASE_URL` points at the throw-away `test` database and also enables the concurrent-latency test, which only runs on Postgres. Without it the suite falls back to SQLite, which is only a quick check.
+`spec_check.py` exits 1 if any check fails. To test the deployed service add `--base-url https://txn-webhooks.onrender.com` to the spec, smoke and load scripts (`spec_check.py` writes about 42 test rows to the live database). Laptop latency varies a lot: use the median of at least three runs.
 
 ## Map: task success criteria → tests
 | Criterion | Tests |
@@ -37,6 +41,7 @@ Full tables, experiments and bottleneck analysis are in **[test-results.md](test
 - Forced kill 3 s after a webhook, then restart, on Postgres: the transaction was recovered and `PROCESSED` 128 s after the restart.
 - `load_test.py` on local Postgres: 50 sequential requests p95 36 ms (pass); 100 requests × 20 concurrent p95 790 ms (fail); 400 × 20 concurrent p95 460 ms (pass).
 - Hard-kill test (ad hoc script, SQLite): row survived, finished 123 s after restart.
+- **Distance replica** (`delay_proxy.py` plus `dashboard_poller.py`, 3 interleaved rounds, one sender): with the database made ≈ 57 ms away, the webhook takes ≈ 455 ms p50 (28 ms on the direct database). With the dashboard polling, p95 was 588 ms on pool 2+1 and 482 ms on 5+5. Details: [test-results.md](test-results.md) §5.7.
 
 ## What is NOT tested
 - DB-outage behaviour (`503` path, processing abort) - code exists, no test injects a failure.

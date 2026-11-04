@@ -1,6 +1,6 @@
 # Test Results, Performance Findings and Bottlenecks
 
-**Recorded:** 2026-11-04 · **Scope:** a record of what was tested, what was measured and where the time goes. Nothing in this round was fixed or tuned; improvements are listed in section 9 for a later round.
+**Recorded:** 2026-11-04 · **Scope:** a record of what was tested, what was measured and where the time goes. No application code or deployment setting was changed. Section 5.7 (added later the same day) reproduces the Render delay on a laptop and compares API pool sizes; improvements are listed in section 9.
 
 Related: [testing.md](testing.md) (how to run the tests) · [risks.md](risks.md) · [tracker.md](tracker.md) · [decisions.md](decisions.md)
 
@@ -13,6 +13,9 @@ Related: [testing.md](testing.md) (how to run the tests) · [risks.md](risks.md)
 | `202` within 500 ms, **20 concurrent senders**, local, Linux | **Borderline.** p95 ≈ 460–550 ms; about half the runs pass. |
 | Same, local, **Windows** | **Not met reliably.** p95 ≈ 670–1,200 ms, varies a lot between runs. |
 | `202` within 500 ms on **Render + Supabase** | **Not met.** Server-side time per POST is 477–924 ms, **both before and after the owner moved the database** (2026-11-04); a single read stays at ≈ 400 ms. |
+| `202` within 500 ms, **one sender, local database made 57 ms "distant"** (section 5.7) | **Borderline when quiet** (p50 ≈ 455 ms, p95 ≈ 490 ms). **Not met with the dashboard polling on the 2 + 1 pool** (p95 588 ms); met, narrowly, on a 5 + 5 pool (p95 482 ms). |
+
+**Reproduced locally (section 5.7):** with a local database made to behave like Render's (57 ms round trip, via a delay proxy), a single webhook takes **≈ 450 ms p50** with nothing else running, against **28 ms** with the direct local database. Same code, same pool. So the delay on Render is caused by the distance to the database, not by the application. Adding the dashboard's own polling pushed p95 to **588 ms** on the current 2 + 1 API pool and kept it at **482 ms** on a 5 + 5 pool.
 
 **Biggest finding for deployment:** the time is dominated by the *number of database round trips per request* (about 7 for a simple request, about 14 for a duplicate POST) multiplied by a round trip of **≈ 57–60 ms from Render to the database**. The numbers did not change when the database was moved, so the app is still talking to a database about 60 ms away: either the move did not take effect for this service (check the host in `DATABASE_URL`) or the new database is not near Render. A same-region database should take a few ms per round trip, i.e. ≈ 35 ms per request. See bottleneck B1 and section 5.6.
 
@@ -45,6 +48,7 @@ Verified on 2026-11-04 against a clean local instance on PostgreSQL (real 30 s d
 | E3 | `python:3.12-slim` Linux container on the same laptop | Same Docker Postgres (via `host.docker.internal`) | Closest local match to Render/CI, which are Linux. |
 | E4 | Render free web service (Singapore) | Supabase free project, Session pooler: **Seoul** until 2026-11-04, then changed by the owner "to match Render" (the actual region/host after the change is unconfirmed, see B1) | The real deployment: `https://txn-webhooks.onrender.com`. |
 | E5 | GitHub Actions `ubuntu-latest` | Postgres 16 service container | Suite passed on 2026-11-03; latency figures from that run were not read (log needs sign-in). |
+| E6 | Windows 11 laptop, two `uvicorn` backends (API pool 2+1 and 5+5) | Docker Postgres behind `scripts/delay_proxy.py` (28 ms each way, ≈ 57 ms round trip) | Local replica of Render's database distance, used in section 5.7. |
 
 ## 3. Correctness results
 
@@ -163,7 +167,7 @@ Sampling `GET /v1/stats` every 250 ms: `api_in_use` peaked at **12 of 20**, and 
 
 ### 5.6 Round trips per request: injected 100 ms database round trip (E2)
 
-To find out *why* a request costs ~400 ms on Render, a small TCP proxy (`scratchpad` script, not in the repo) was placed between a local copy of the app and the Docker Postgres, delaying every packet by 50 ms in each direction (round trip 100 ms). Median over 7 requests each, after warming the pool:
+To find out *why* a request costs ~400 ms on Render, a small TCP proxy (now `backend/scripts/delay_proxy.py`) was placed between a local copy of the app and the Docker Postgres, delaying every packet by 50 ms in each direction (round trip 100 ms). Median over 7 requests each, after warming the pool:
 
 | Endpoint | Median | ≈ round trips (÷ 100 ms) |
 |---|---|---|
@@ -181,6 +185,60 @@ So one simple request makes about 7 sequential database round trips and a duplic
 
 **What this implies:** with a database a few ms away the same code would take ≈ 35–50 ms per simple request; at ≈ 60 ms it takes ≈ 400 ms. Cutting the number of round trips per request would help at any distance, but that is not implemented (section 9).
 
+### 5.7 Distance experiment: a local replica of Render's latency (E6)
+
+**Question.** Is the slow `202` on Render caused by distance to the database, and does the dashboard's own polling make it worse?
+
+**Setup (2026-11-04, Windows laptop).** Docker Postgres behind `scripts/delay_proxy.py`, which delays every packet by 28 ms each way (≈ 57 ms round trip, the figure inferred for Render in 5.6). `/health/ready` through the proxy took 390–490 ms, against 555 ms on Render. Two backends shared that proxy and database: one with the API pool at 2 + 1 (the `render.yaml` setting) and one at 5 + 5. `scripts/dashboard_poller.py` reproduced the dashboard's polling with the same intervals as `frontend/src/config/app.js`: list every 3 s, stats every 3 s, health every 10 s, five tracked transactions every 2 s. Each test was `load_test.py` with one sender: 50 webhooks when quiet, 100 webhooks while the poller ran. Three rounds, interleaved (which pool went first alternated), with a 34 s pause between tests so earlier 30 s jobs finished.
+
+**Results** (webhook `202` time, ms; limit 500):
+
+| Case | Pool | p95 in rounds 1 / 2 / 3 | Median p50 | Median p95 | Against 500 ms |
+|---|---|---|---|---|---|
+| Quiet | 2 + 1 | 489 / 488 / 422 | 454 | 488 | borderline pass |
+| Quiet | 5 + 5 | 487 / 492 / 537 | 458 | 492 | borderline |
+| Dashboard polling | 2 + 1 | 628 / 588 / 578 | 442 | **588** | **fail in all 3 rounds** |
+| Dashboard polling | 5 + 5 | 476 / 488 / 482 | 438 | **482** | pass in all 3 rounds, thin margin |
+
+For comparison, with the **direct** local database (≈ 1 ms), pool 2 + 1, one run each: quiet p50 28 ms, p95 41 ms; with polling p50 21 ms, p95 44 ms.
+
+**Reading.**
+- **Distance sets the floor.** At a 57 ms round trip a single webhook takes about 450 ms even when nothing else is running, against 28 ms with the same code on the direct database. That is the Render problem reproduced without Render.
+- **Dashboard polling adds about 100 ms at p95 on a 3-connection pool** (588 vs 488 ms). Each dashboard read holds a connection for about 400 ms, so with only 3 connections the webhook waits in the same queue. With 10 connections the penalty disappeared (482 vs 492 ms).
+- **A bigger pool does not remove the distance.** Even on 5 + 5 the quiet p95 sits at about 490 ms, which leaves roughly 10 ms of margin. A safe margin needs the database closer to Render, or fewer round trips per request.
+
+**Caveats.** The proxy adds a constant delay: no TLS, no Supabase pooler, none of the variation of a real network. The client, the proxy and both backends ran on one laptop. Three runs per cell. Not yet run on Render. An earlier first pass in which the polling covered only about half of the requests pointed the same way and is superseded by this table.
+
+### 5.8 Summary: the single-webhook 500 ms target, why Render misses it, what we tried
+
+The requirement is that `POST /v1/webhooks/transactions` answers `202` within 500 ms however long the background processing takes. The project uses HTTP polling, not WebSockets (decision D21), so this is the webhook response time.
+
+| Setup | Measured (2026-11-04) | Verdict |
+|---|---|---|
+| Local, one sender (`load_test.py --n 50 --concurrency 1`) | p50 24 ms, p95 36 ms, max 52 ms | **Met** |
+| Local, dashboard, five sends in a row | 13–78 ms | **Met** |
+| Local, 20 concurrent senders | p95 ≈ 460–550 ms on Linux, higher on Windows | Borderline |
+| Local, database made 57 ms "distant" like Render's, nothing else running | p50 ≈ 455 ms, p95 ≈ 490 ms | Borderline |
+| Same, with the dashboard polling, API pool 2+1 (Render's setting) | p95 ≈ 588 ms | **Not met** |
+| Same, with the dashboard polling, API pool 5+5 | p95 ≈ 482 ms | Met, narrowly |
+| Render + Supabase, one webhook (server-side) | 477–924 ms | **Not met** |
+
+**Why it is fast locally.** The request validates, does one `INSERT`, commits and returns. The 30 s processing runs afterwards in a background task, so it adds nothing to the response time.
+
+**Why Render misses it: distance to the database.** Each database round trip from Render costs ≈ 57–60 ms, and a webhook makes about 7 of them, so even a request that does nothing else takes ≈ 400–500 ms. A local database made to behave the same way (a delay proxy adding 57 ms per round trip) takes the same code from **28 ms to ≈ 450 ms**. The application is not slow; the network between it and its database is.
+
+**What we tried, and what it showed**
+
+| Attempt | Result |
+|---|---|
+| Moved the Supabase database (it was in Seoul, Render is in Singapore) | Render timings did not change, so the app still reaches a database ≈ 60 ms away. Which host `DATABASE_URL` really points at is still to be confirmed. |
+| Counted round trips by injecting a 100 ms delay locally | About 7 per simple request and 14 for a duplicate webhook (5.6). |
+| Reproduced Render's latency locally with a 57 ms delay proxy | Confirms distance as the cause: 28 ms became ≈ 450 ms (5.7). |
+| Compared API pool sizes while the dashboard polls | On Render's 2+1 pool the webhook p95 rose to ≈ 588 ms; a 5+5 pool kept it at ≈ 482 ms. Dashboard reads queue the webhook when the pool is small (5.7, B8). |
+| Bigger pool with a nearby database; `pool_pre_ping` off; background jobs on and off | A bigger pool was worse with a nearby database, `pool_pre_ping` made no difference, and background jobs add ≈ 170 ms to p95 under 20 concurrent senders (5.1, B2). |
+
+**What would fix it**, in order: (1) put the database in the same region as Render, after confirming the real host in `DATABASE_URL`; (2) raise the Render API pool to 5+5 so the dashboard cannot delay a `202` (recommended, not applied yet); (3) cut the database round trips per request (not implemented). A bigger pool alone is not enough: even at 5+5 the quiet p95 is ≈ 490 ms, about 10 ms under the limit. See also risks R1, R18, R23.
+
 ## 6. Bottlenecks, ranked
 
 | # | Bottleneck | Evidence | Confidence |
@@ -191,6 +249,7 @@ So one simple request makes about 7 sequential database round trips and a duplic
 | **B4** | **SQLite single writer.** Concurrent inserts queue up; p95 ≈ 1.1–1.6 s with 20 senders. | Early runs (E1) | High. Not relevant on Postgres. |
 | **B5** | **Free-tier cold starts.** Render sleeps after ~15 minutes idle; the first request can take 30 s or more. A pinger on `GET /` is required. | Render docs; not measured here | Medium. |
 | **B7** | **Opening a database connection is expensive and blocks the event loop.** Measured: one new Postgres connection (connect + `scram-sha-256` password hashing) takes ~38 ms of mostly CPU time; 5 at once take 157 ms with the event loop stalled for up to 85 ms. A cold pool at the start of a burst opens many connections, each stalling every in-flight request. This fits the 693 ms first webhook after a fresh start (a later warm run: 15–21 ms), the "first requests of a burst are slow" pattern, why a 20-connection pool was *worse* (more connections to open), and the ~110,000 HMAC calls seen in the Windows profile. `pool_recycle=300` also replaces every connection older than 5 minutes. On Render + Supabase each new connection additionally pays TLS and several network round trips. | Direct measurement (section 5.5) plus the profile; the link to the burst latency is an inference, **not isolated by an experiment** | Medium-high that it contributes; its share of the total is unmeasured. |
+| **B8** | **A 3-connection API pool queues the webhook behind the dashboard's reads when the database is distant.** At a 57 ms round trip each read holds a connection for about 400 ms, and the dashboard issues several at once (list, stats, one per tracked transaction), so a `202` waits for a free connection. With the pool at 2 + 1 the webhook p95 was 588 ms; with 5 + 5 it was 482 ms. Observed on Render in the pasted log: webhooks at 415 ms when quiet and 1,231 ms right after a list and a stats call. | Section 5.7 (three interleaved rounds); Render log of 2026-11-04 14:57 UTC | High locally. **Not yet measured on Render**, where the pool is still 2 + 1. |
 | B6 | **The test itself shares one process.** `test_ack_is_fast_under_concurrent_senders` runs the test client, the app and up to 200 background jobs in one Python process, so its numbers include the client's own CPU. | `tests/test_performance.py`, `tests/conftest.py` | High on the design; the size of the effect is unmeasured. |
 
 ## 7. Ruled out
@@ -198,7 +257,7 @@ So one simple request makes about 7 sequential database round trips and a duplic
 | Hypothesis | Result |
 |---|---|
 | Network to the local database is slow | 0.94 ms p50 round trip (5.4). |
-| API connection pool too small | A bigger pool (20) was **worse**; `api_in_use` peaked at 12 of 20 (5.1, 5.3). |
+| API connection pool too small | **Ruled out with a nearby (≈ 1 ms) database:** a bigger pool (20) was **worse**; `api_in_use` peaked at 12 of 20 (5.1, 5.3). **Not ruled out with a distant (≈ 57 ms) database:** 2 + 1 gave p95 588 ms against 482 ms on 5 + 5 under dashboard polling (5.7, B8). The earlier conclusion only holds when the database is close. |
 | `pool_pre_ping` adds a large cost locally | Median 528 vs 553 ms, inside run-to-run noise (5.1). |
 | Request handler CPU | In the Linux profile the handler and the insert were cheap; the cumulative time sat in the background claim path (which also includes waiting for connections). Call counts in a coroutine profile are not reliable, so no per-call figures are quoted. |
 
@@ -217,7 +276,7 @@ Listed in the order that looks most valuable; none has been implemented.
 
 1. **Check where the app really connects.** In Render's environment for the backend, look at the host in `DATABASE_URL` (do not share the password): `…ap-southeast-1…` is Singapore, `…ap-northeast-2…` is Seoul. Confirm the Supabase project's region in its settings, and that the value was saved and the service redeployed. After a correct move, `GET /v1/transactions/{id}` should drop from ≈ 400 ms to well under 100 ms; if it does not, the round trip is not distance.
 2. **Cut the round trips per request** (about 7 for a simple request, 14 for a duplicate webhook), which helps at any distance: e.g. drop the per-checkout connection check or make reads and the single-statement insert run in autocommit. The injected-delay proxy in section 5.6 can measure the effect locally before deploying. Not implemented; changes the core request path.
-3. **Re-measure the Render pool.** `render.yaml` sets the API pool to 2 + 1; locally larger pools were not better, but 2 + 1 itself was never compared on Render.
+3. **Raise the Render API pool and re-measure.** Section 5.7 found that 2 + 1 failed (p95 588 ms) and 5 + 5 passed (482 ms) with the dashboard polling at a 57 ms database distance. Set `API_DB_POOL_SIZE=5` and `API_DB_MAX_OVERFLOW=5` in Render's environment (or in `render.yaml`) and re-run `load_test.py --base-url https://txn-webhooks.onrender.com --concurrency 1`, once with the dashboard closed and once open. Not applied yet. A further option is a small separate pool used only by the webhook insert, so dashboard reads can never delay a `202`. Neither option removes the distance (item 1).
 4. **Lighten the background job's database work.** Fewer statements and transactions per job to reduce B2. This touches the lease logic, so it needs the reliability tests.
 5. **Move processing to a separate worker process.** Removes B2 entirely, at the cost of a second Render service.
 6. **Open the connection pool before traffic arrives** (and avoid frequent recycling), so a burst does not pay ~38 ms × N of blocked event loop (B7); if Render's free instance has a small CPU share (not verified here) the cost there could be larger than the local ~38 ms. Test by comparing the first request after a restart and the first request of a burst, before and after.
@@ -248,6 +307,19 @@ python scripts/smoke_test.py --base-url https://txn-webhooks.onrender.com
 # Watch pool use during a burst (second terminal)
 curl.exe "http://127.0.0.1:8000/v1/stats"        # see db.api_in_use / api_pool_max
 ```
+
+Distance replica (section 5.7): Docker Postgres behind a delay proxy, so the local database behaves like Render's. Use four terminals in `backend/`:
+
+```powershell
+python scripts/delay_proxy.py 5433 5432 28                                   # 1: 28 ms each way, about a 57 ms round trip
+$env:DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5433/postgres"   # 2: backend through the proxy
+$env:API_DB_POOL_SIZE="2"; $env:API_DB_MAX_OVERFLOW="1"                      #    (the render.yaml pool; try 5 and 5 to compare)
+uvicorn app.main:app --port 8000
+python scripts/dashboard_poller.py http://127.0.0.1:8000 75                  # 3: simulated dashboard polling for 75 s
+python scripts/load_test.py --n 100 --concurrency 1                          # 4: one sender while the poller runs
+```
+
+Run the load test again without the poller for the quiet case. Repeat at least three times and compare medians.
 
 Linux comparison (Docker Desktop running; Git Bash needs `MSYS_NO_PATHCONV=1`):
 
