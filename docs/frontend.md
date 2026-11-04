@@ -8,7 +8,7 @@
 A small dashboard to demo and inspect the webhook service: send test webhooks, watch them move from `PROCESSING` to `PROCESSED`, see duplicates being ignored, and view money in the viewer's preferred currency (INR / USD / EUR / GBP).
 
 ## 2. What already exists
-`frontend/` is an untouched **Vite 8 + React 19 scaffold in plain JavaScript** (`.jsx`, no TypeScript, no router, no data-fetching library, `oxlint` for linting). You may add dependencies; suggestions below are optional. `npm run dev` serves on `http://localhost:5173`, which is already in the backend's default CORS list.
+`frontend/` started as an untouched **Vite 8 + React 19 scaffold in plain JavaScript** (`.jsx`, no TypeScript, no router, no data-fetching library, `oxlint` for linting). *Now:* the dashboard uses `@tanstack/react-query` for polling and Tailwind CSS 4; the rest of this section describes the starting point. You may add dependencies; suggestions below are optional. `npm run dev` serves on `http://localhost:5173`, which is already in the backend's default CORS list.
 
 Suggested (optional) additions: `react-router-dom`, `@tanstack/react-query` (polling), a CSS approach of your choice.
 
@@ -16,6 +16,8 @@ Suggested (optional) additions: `react-router-dom`, `@tanstack/react-query` (pol
 | Env var | Example | Meaning |
 |---|---|---|
 | `VITE_API_BASE_URL` | `http://127.0.0.1:8000` or `https://txn-webhooks.onrender.com` | Backend base URL, no trailing slash |
+
+The dashboard also reads `VITE_USE_MOCK` (default `true`), `VITE_MOCK_PROCESSING_SECONDS` and `VITE_DEV_PROXY_TARGET`; see the main README. They are frontend-only and do not change the backend contract.
 
 Windows: prefer `127.0.0.1` over `localhost` for the backend URL (a `localhost` connection can stall ~2 s per request).
 Tell the backend owner your deployed origin so it is added to `CORS_ORIGINS`; until then, browser calls from it fail with a CORS error.
@@ -49,7 +51,7 @@ Error handling: `422` bodies have `detail` as an **array** for webhook payload e
 - Changing the preference should update every visible amount without a page reload.
 
 ## 6. Screens
-1. **Header / health badge** - polls `GET /` every ~30 s. Green "Healthy" / red "Unreachable". If a request takes > 5 s, show "Server may be waking up (free hosting)".
+1. **Header / health badge** - polls `GET /` every 10 s (the original spec said ~30 s). Green "Healthy" / red "Unreachable". If a request takes > 5 s, show "Server may be waking up (free hosting)".
 2. **Send webhook** - form: transaction id (button "generate random": `txn_` + 12 hex chars), source, destination, amount (number > 0), currency (the 4 codes; this is the *sent* currency, separate from the display preference). Prefill with the sample payload. On submit show status code, the response body and latency in ms (measure with `performance.now()`). Handle 202 accepted / 202 duplicate / 409 / 422 / network error distinctly.
 3. **Duplicate & burst tools** - "Send same webhook ×N" (N = 5): show 1× accepted + (N−1)× duplicate. "Burst" (e.g. 20 different ids) with a min/avg/max latency summary and a warning if any exceeded 500 ms.
 4. **Track a transaction** - input an id (prefilled with the last one sent); poll `GET /v1/transactions/{id}` every 2 s until `PROCESSED` or `FAILED`, then stop. Show a progress bar/countdown to ~30 s using `created_at`, then status, attempts, timestamps, processing duration (`processed_at − created_at`), `last_error` if any. Unknown id → friendly "not found" (404).

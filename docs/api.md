@@ -45,7 +45,7 @@ Query: `currency` (optional) - `INR|USD|EUR|GBP`, case-insensitive.
   "transaction_id": "txn_abc123def456",
   "source_account": "acc_user_789",
   "destination_account": "acc_merchant_456",
-  "amount": 17.86,             "currency": "USD",      // DISPLAY values (requested currency, or original if none requested)
+  "amount": 15.83,             "currency": "USD",      // DISPLAY values (requested currency, or original if none requested)
   "original_amount": 1500,     "original_currency": "INR",
   "amount_inr": 1500.0,        "fx_rate_to_inr": 1.0,  "fx_rate_as_of": "2026-11-03",   // null until PROCESSED
   "status": "PROCESSED",       // PROCESSING | PROCESSED | FAILED
@@ -55,7 +55,7 @@ Query: `currency` (optional) - `INR|USD|EUR|GBP`, case-insensitive.
   "processed_at": "2024-01-15T10:30:30Z"             // null while PROCESSING/FAILED
 }]
 ```
-- Returns a **JSON array with exactly one element**, as sketched in `backend.md` (`[{...}]`). An unknown id returns `404`, not an empty array (`assumptions.md` A1).
+- Returns a **JSON array with exactly one element**, as sketched in `backend_task.md` (`[{...}]`). An unknown id returns `404`, not an empty array (`assumptions.md` A1).
 - `amount`/`currency`: with `?currency=X` → converted (banker's rounding, 2 dp). Without → exactly as received. Asking for the currency it was received in returns the original amount unchanged.
 - `404 {"detail":"Transaction not found"}` · `422 {"detail":"Unsupported currency 'JPY'. Supported: INR, USD, EUR, GBP"}`
 

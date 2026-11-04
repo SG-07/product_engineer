@@ -63,5 +63,5 @@ Last updated: 2026-11-04 · Full test and performance record: [test-results.md](
 - Performance test split in two (sequential test everywhere; 20-concurrent test only on Postgres) after SQLite showed write-lock queuing. Threshold was **not** loosened.
 - SQLite WAL mode was tried and reverted: no measurable improvement.
 - 2026-11-04: local development moved to PostgreSQL 16 in Docker (README, `.env.example`, `docs/testing.md`). SQLite stays only as a no-Docker fallback. Code defaults (`config.py`, `tests/conftest.py`) still fall back to SQLite if nothing is configured.
-- 2026-11-04: **`GET /v1/transactions/{id}` now returns the one-element array from `backend.md`** (was a single object, D18). **Render still runs the old build until it is redeployed**; re-run `scripts/spec_check.py --base-url <render url>` after deploying.
+- 2026-11-04: **`GET /v1/transactions/{id}` now returns the one-element array from `backend_task.md`** (was a single object, D18). Render was redeployed with this change on 2026-11-04 (read-only check). Still to run: `scripts/spec_check.py --base-url <render url>` (it writes test rows).
 - 2026-11-04: `pool_pre_ping` was switched off temporarily to measure it and **reverted**; no application code was changed by the performance investigation.

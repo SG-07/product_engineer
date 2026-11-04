@@ -4,16 +4,46 @@ A Python service that receives transaction webhooks from a payment processor (Ra
 
 Amounts are stored in **INR** and can be viewed in **INR, USD, EUR or GBP** (`?currency=`).
 
-- Task description: [backend.md](backend.md)
+- Task description: [backend_task.md](backend_task.md)
 - Live backend: `https://txn-webhooks.onrender.com` · interactive API docs: `https://txn-webhooks.onrender.com/docs`
 - Live dashboard: `https://product-engineer.onrender.com`
+
+## Built with
+
+Versions are the pins in `backend/requirements*.txt` and the ranges in `frontend/package.json`; a fresh `npm install` can pull newer minor versions.
+
+| Layer | Tool | Version | Used for |
+|---|---|---|---|
+| Language | Python | 3.12+ (Render pins 3.12.8) | backend |
+| Web framework | FastAPI | 0.115.6 | async API, request validation, auto-generated `/docs` |
+| ASGI server | Uvicorn (standard) | 0.34.0 | runs the app |
+| Validation and config | Pydantic, pydantic-settings | 2.10.4, 2.7.1 | strict webhook schemas, env-var settings |
+| Database access | SQLAlchemy (asyncio) | 2.0.36 | queries and conditional `UPDATE`s |
+| Postgres driver | asyncpg | 0.30.0 | async driver used in production and tests |
+| SQLite driver | aiosqlite | 0.20.0 | no-Docker fallback only (not valid for latency) |
+| Database | PostgreSQL | 16 | local (Docker), CI, and production (Supabase) |
+| Tests | pytest, pytest-asyncio, httpx | 8.3.4, 0.25.0, 0.28.1 | test suite and async test client |
+| Frontend | React | 19 (`^19.3.1`) | dashboard UI |
+| Build tool | Vite | 8 (`^8.3.5`) | dev server and production build |
+| Styling | Tailwind CSS | 4 (`^4.3.4`) | styling, with `tw-animate-css` for motion |
+| UI primitives | Radix UI, lucide-react, sonner | 1.x, 1.x, 2.x | accessible tabs and dialogs, icons, toast messages |
+| Data fetching | TanStack Query | 5 (`^5.105.3`) | polling for stats, pipeline and tables |
+| Routing | React Router | 7 | Dashboard and Settings pages |
+| Charts | Recharts | 3 (`^3.10.1`) | latency charts |
+| Linting | oxlint | 1.x | `npm run lint` |
+| Hosting (app) | Render | Blueprint, native Python runtime | backend web service and static dashboard |
+| Hosting (database) | Supabase | managed | PostgreSQL via the Session pooler |
+| Containers | Docker Desktop | current | local PostgreSQL 16 |
+| CI | GitHub Actions | — | full test suite on Postgres 16 on every push |
+| Source control | Git and GitHub | — | repository and CI trigger |
+| AI coding assistant | Claude Code | — | used to build, test and document the project |
 
 ## Status at a glance (2026-11-04)
 
 | Area | State |
 |---|---|
 | Features (webhook, idempotency, 30 s processing, recovery, currency views, dashboard) | Working end to end, locally and on Render |
-| Requirements in [backend.md](backend.md) | All met locally (`scripts/spec_check.py`: 33 of 33 checks, no deviations), including the array response `[{...}]` for `GET /v1/transactions/{id}` ([decision D18](docs/decisions.md)). The 500 ms rule is **not met on Render yet** (below). |
+| Requirements in [backend_task.md](backend_task.md) | All met locally (`scripts/spec_check.py`: 33 of 33 checks, no deviations), including the array response `[{...}]` for `GET /v1/transactions/{id}` ([decision D18](docs/decisions.md)). The 500 ms rule is **not met on Render yet** (below). |
 | Tests | 86 tests; 85 pass on PostgreSQL 16. The 20-concurrent-senders latency test fails on the Windows dev machine in most runs (passed 2 of 8) |
 | Reliability | A forced kill 3 s after a webhook, then restart: the transaction was recovered and finished as `PROCESSED` 128 s after the restart (slow because of the 90 s lease) |
 | `202` within 500 ms, one sender at a time, local | **Met** (p95 ≈ 30–36 ms; the very first request after a fresh start can take ~700 ms while connections open) |
@@ -42,6 +72,31 @@ Processor ─POST /v1/webhooks/transactions─► validate ─► INSERT ... ON 
 | Failures | Up to 3 attempts with backoff, then status `FAILED` with `last_error`. |
 
 More detail: [docs/architecture.md](docs/architecture.md) · design choices and alternatives: [docs/decisions.md](docs/decisions.md).
+
+## Single webhook under 500 ms
+
+Requirement: `POST /v1/webhooks/transactions` must answer `202` within 500 ms, however long the background processing takes. The project uses HTTP polling rather than WebSockets (see [decision D21](docs/decisions.md)), so "under 500 ms" here means the webhook response.
+
+| Setup | Measured (2026-11-04) | Verdict |
+|---|---|---|
+| Local, one sender (`load_test.py --n 50 --concurrency 1`) | p50 24 ms, p95 36 ms, max 52 ms | **Met** |
+| Local, dashboard, five sends in a row | 13–78 ms | **Met** |
+| Local, 20 concurrent senders | p95 ≈ 460–550 ms on Linux, higher on Windows | Borderline |
+| Render + Supabase, one webhook (server-side) | 477–924 ms | **Not met** |
+
+Why it is fast locally: the request does validation and one `INSERT`, commits, and returns. The 30 s processing runs afterwards in a background task, so it does not add to the response time.
+
+Why Render misses it: each database round trip from Render costs ≈ 57–60 ms, and a webhook makes about 7 of them (about 14 for a duplicate). Fixing it means putting the database in the same region as Render (first confirm which host `DATABASE_URL` points at), and reducing round trips per request. Details: [docs/test-results.md](docs/test-results.md) §5.6 and [risk R18](docs/risks.md).
+
+To measure it yourself:
+
+```powershell
+cd backend
+python scripts/load_test.py --n 50 --concurrency 1                                                        # local
+python scripts/load_test.py --base-url https://txn-webhooks.onrender.com --n 50 --concurrency 1          # Render
+```
+
+On Render, send one request and wait first: the free tier can take ~40 s to wake up after idle, which would skew the numbers.
 
 ## Install and run locally (Windows PowerShell)
 
@@ -144,14 +199,26 @@ On first visit a **currency picker** asks which currency to display (INR, USD, E
 | Transactions table | The 50 newest transactions, filterable by status and searchable, with a detail panel per row. Refreshes automatically while anything is processing. |
 | Settings | Currency, theme (light / dark / system), the **mock API** switch, and a button to clear mock data. |
 
-### Suggested walkthrough
+### Using the complete program
 
-1. Open the **Send webhook** tab, press send, and note the status code (`202`) and latency.
-2. Watch the pipeline board: the transaction counts down ~30 s, then moves to **Processed** and appears in the table with its INR amount.
-3. Open the **Idempotency** tab and run the *Identical* scenario: one accepted, the others `duplicate`.
-4. Run the *Conflict* scenario: the same id with changed fields is rejected with `409` and the original is kept.
-5. Change the display currency in **Settings** and watch every amount in the table update.
-6. Open the **Load test** tab, run 20 webhooks at concurrency 1, then at concurrency 20, and compare the latency numbers with the 500 ms line.
+Start the three pieces in this order, each in its own terminal: the database (Docker), the backend (`uvicorn` in `backend/`), then the dashboard (`npm run dev` in `frontend/`). Then open **http://localhost:5173** and work through this tour once; it covers every part of the system.
+
+1. **Check the health badge.** Green "Healthy" means the dashboard reaches the backend. Red means it does not: see Troubleshooting below.
+2. **Pick a display currency** in the first-visit picker. It is saved in the browser and you can change it later in **Settings**. The backend converts every amount, so the dashboard just displays what it receives.
+3. **Send one webhook** from the **Send webhook** tab. Note the `202` status and the latency. The Latency panel shows that number next to the 500 ms line.
+4. **Watch it move.** The pipeline board shows the transaction under *Processing* with a countdown. After about 30 s it moves to *Processed*, and the table shows its INR amount. The status strip counts it along the way.
+5. **Test idempotency.** In the **Idempotency** tab run *Identical*: expect one `accepted` and the rest `duplicate`, with the transaction processed once. Then run *Conflict*: expect `409` for the changed fields and the original kept.
+6. **Measure under load.** In the **Load test** tab run 20 webhooks at concurrency 1, then at concurrency 20, and compare p95 with the 500 ms line. Concurrency 20 sits near the line on a local machine, so repeat it about three times and read the median.
+7. **Explore the data.** The transactions table filters by status, searches by id, and opens a detail panel per row. Switch currency in **Settings** and the same row shows USD, EUR or GBP, with the original amount as secondary text.
+8. **Debug from the request log.** The **request log** button in the header lists every HTTP call the page made, with status, time and response body. Check it first when something looks wrong.
+9. **Script it if you want.** Open **http://127.0.0.1:8000/docs** for the interactive API reference, or use `scripts/send_webhook.py` from a terminal.
+
+Tips:
+
+- Open the dashboard at `http://localhost:5173` and point the backend URL at `127.0.0.1:8000`. Opening it at `127.0.0.1:5173` fails CORS.
+- The frontend defaults to mock mode. Set `VITE_USE_MOCK=false` in `frontend/.env`, and make sure the **Settings → Use mock API** switch is off, or you will see fake data.
+- Mock mode is fine for UI work without a backend, but its timings mean nothing for latency. Use the live backend for any latency check.
+- On Render the first load can take about 40 s; wait before measuring.
 
 ### Mock mode versus the live backend
 
@@ -186,7 +253,7 @@ Frontend specification and acceptance criteria: [docs/frontend.md](docs/frontend
 |---|---|---|
 | `POST /v1/webhooks/transactions` | Receive a transaction webhook | `202` |
 | `GET /` | Health check | `200 {"status":"HEALTHY","current_time":...}` |
-| `GET /v1/transactions/{id}?currency=` | Transaction status, as a one-element array `[{...}]` (as in the spec) | `200` / `404` |
+| `GET /v1/transactions/{id}?currency=` | Transaction status, as a one-element array `[{...}]` (as in the spec) | `200` / `404` / `422` (unsupported currency) |
 | `GET /v1/transactions?status=&currency=&limit=&offset=` | List, newest first | `200` |
 | `GET /v1/currencies` | Supported currencies + the fixed rates in use | `200` |
 | `GET /v1/stats` | Live counts, server-side latency, DB pool usage (for the dashboard) | `200` |
@@ -210,6 +277,12 @@ All backend settings are environment variables (see [backend/.env.example](backe
 | `CORS_ORIGINS` | `http://localhost:5173` | Frontend origin(s), comma separated, no trailing slash. |
 | `FRONTEND_URL` | unset | Where `GET /dashboard` redirects, e.g. `https://product-engineer.onrender.com`. Unset = `/dashboard` returns 404. |
 | `API_DB_POOL_SIZE` / `API_DB_MAX_OVERFLOW` | `5` / `5` | Connections for the API. Local tests showed bigger pools are not faster; `render.yaml` uses 2 / 1 (not yet compared on Render). |
+| `WORKER_DB_POOL_SIZE` / `WORKER_DB_MAX_OVERFLOW` | `3` / `2` | Connections for background processing and the sweeper, kept separate from the API pool. |
+| `RETRY_BACKOFF_SECONDS` | `2` | Base wait between attempts; it doubles each retry (2 s, then 4 s). |
+| `SWEEPER_INTERVAL_SECONDS` | `30` | How often the recovery sweeper looks for abandoned work. |
+| `STALE_UNCLAIMED_SECONDS` | `10` | A `PROCESSING` row nobody has claimed for this long is rescheduled by the sweeper. |
+| `SWEEPER_ENABLED` | `true` | Set `false` to turn the recovery sweeper off. |
+| `SIGNATURE_HEADER` | `X-Razorpay-Signature` | Header that carries the HMAC signature. |
 | `SIMULATED_FAILURE_RATE` | `0` | Demo: fraction of attempts that fail on purpose. |
 
 Frontend settings (in `frontend/.env`, read at start / build time):
@@ -228,7 +301,7 @@ Run from the `backend/` folder, with the Docker Postgres running and the virtual
 ```powershell
 $env:TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/test"
 pytest -q -rs                                          # whole suite on Postgres, ~30-45 s
-python scripts/spec_check.py                           # checks every requirement in backend.md against a running server, ~40 s
+python scripts/spec_check.py                           # checks every requirement in backend_task.md against a running server, ~40 s
 python scripts/smoke_test.py                           # end-to-end against a running server, ~35 s (real 30 s wait)
 python scripts/load_test.py --n 50  --concurrency 1    # latency, one sender at a time
 python scripts/load_test.py --n 100 --concurrency 20   # latency under concurrency vs the 500 ms limit

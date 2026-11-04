@@ -8,7 +8,7 @@ Related: [testing.md](testing.md) (how to run the tests) · [risks.md](risks.md)
 
 | Question | Answer |
 |---|---|
-| Does the service do what `backend.md` asks? | **Yes, locally** (section 1.1). Checked requirement by requirement with `scripts/spec_check.py`: 33 of 33 checks pass, no deviations. On Render the end-to-end smoke test passes 14 of 15 checks (run before the array change); the 15th is latency, so the 500 ms requirement is **not met there**. |
+| Does the service do what `backend_task.md` asks? | **Yes, locally** (section 1.1). Checked requirement by requirement with `scripts/spec_check.py`: 33 of 33 checks pass, no deviations. On Render the end-to-end smoke test passes 14 of 15 checks (run before the array change); the 15th is latency, so the 500 ms requirement is **not met there**. |
 | `202` within 500 ms, **one sender at a time**, local | **Met.** p95 36 ms (Windows laptop, Postgres in Docker); 13–78 ms per request in manual dashboard use. |
 | `202` within 500 ms, **20 concurrent senders**, local, Linux | **Borderline.** p95 ≈ 460–550 ms; about half the runs pass. |
 | Same, local, **Windows** | **Not met reliably.** p95 ≈ 670–1,200 ms, varies a lot between runs. |
@@ -16,11 +16,11 @@ Related: [testing.md](testing.md) (how to run the tests) · [risks.md](risks.md)
 
 **Biggest finding for deployment:** the time is dominated by the *number of database round trips per request* (about 7 for a simple request, about 14 for a duplicate POST) multiplied by a round trip of **≈ 57–60 ms from Render to the database**. The numbers did not change when the database was moved, so the app is still talking to a database about 60 ms away: either the move did not take effect for this service (check the host in `DATABASE_URL`) or the new database is not near Render. A same-region database should take a few ms per round trip, i.e. ≈ 35 ms per request. See bottleneck B1 and section 5.6.
 
-## 1.1 Compliance with `backend.md`
+## 1.1 Compliance with `backend_task.md`
 
 Verified on 2026-11-04 against a clean local instance on PostgreSQL (real 30 s delay), using the spec's own request body and `scripts/spec_check.py` (33 of 33 checks pass after the response was switched to the spec's array shape). The Render column comes from the earlier smoke test (14 of 15 pass), the owner's later dashboard session, and read-only requests; **`spec_check.py` has not yet been run against Render** (it writes about 42 test transactions to the live database).
 
-| Requirement in `backend.md` | Local (Postgres) | Render |
+| Requirement in `backend_task.md` | Local (Postgres) | Render |
 |---|---|---|
 | `POST /v1/webhooks/transactions` accepts the sample body (`amount` 1500, `INR`) | **Met** | Met |
 | Returns `202 Accepted`, simple acknowledgment body | **Met** (`{"status":"accepted","transaction_id":...}`) | Met |
@@ -65,7 +65,7 @@ Verified on 2026-11-04 against a clean local instance on PostgreSQL (real 30 s d
 | 2026-11-04 | `pytest`, three more runs, with two other servers running | E2 | each run 85 passed + 1 failed (the 20-concurrent latency test); 37–44 s per run |
 | 2026-11-04 | Frontend `npm run lint` and `npm run build` | — | both exit 0 |
 | 2026-11-04 | `GET /` on the deployed backend after ~1 h 50 min idle | E4 | **42.4 s** (Render free-tier cold start); the body was the correct `HEALTHY` JSON |
-| 2026-11-04 | Deployed frontend `https://product-engineer.onrender.com` and CORS preflight from that origin to the deployed backend | E4 | frontend `200` HTML in 0.23 s; the preflight returns `access-control-allow-origin: https://product-engineer.onrender.com`. The array change is not pushed or redeployed yet, so Render is still running the previous build (the response shape there was not checked, to avoid writing test data to the live database) |
+| 2026-11-04 | Deployed frontend `https://product-engineer.onrender.com` and CORS preflight from that origin to the deployed backend | E4 | frontend `200` HTML in 0.23 s; the preflight returns `access-control-allow-origin: https://product-engineer.onrender.com`. At the time of this check the array change had not been deployed yet, so Render ran the previous build (the response shape was not checked then, to avoid writing test data to the live database). Section 1.1 records the later redeploy check |
 | 2026-11-04 | CORS preflight against the local backend | — | `Origin: http://localhost:5173` allowed; `http://127.0.0.1:5173` rejected (`400 Disallowed CORS origin`), as documented in the README |
 | 2026-11-04 | Dashboard used by hand against a local backend | E1 | Send, duplicate (5 sends = 1 accepted + 4 duplicate), 30 s processing, EUR display all behaved correctly |
 
@@ -238,7 +238,7 @@ python scripts/load_test.py --n 50  --concurrency 1
 python scripts/load_test.py --n 100 --concurrency 20
 python scripts/load_test.py --base-url https://txn-webhooks.onrender.com --n 50 --concurrency 5
 
-# Requirement-by-requirement check against backend.md (~40 s; uses a fresh transaction id each run)
+# Requirement-by-requirement check against backend_task.md (~40 s; uses a fresh transaction id each run)
 python scripts/spec_check.py --base-url http://127.0.0.1:8000
 python scripts/spec_check.py --base-url https://txn-webhooks.onrender.com
 

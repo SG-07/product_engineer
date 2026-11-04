@@ -25,7 +25,7 @@ Each entry: what we chose, what else was possible, and why. "Confirmed" = chosen
 
 ## D4 - Hosting: Render, Python native runtime, no Docker  *(confirmed)*
 **Alternatives:** Railway, Fly.io, Cloud Run/AWS.
-**Why:** Deploys from GitHub with a free tier, always-on process (needed for in-process tasks).
+**Why:** Deploys from GitHub with a free tier and runs a long-lived process rather than serverless (needed for in-process tasks).
 **Why not Cloud Run:** CPU is throttled after the response unless "always allocated" - background tasks would stall.
 **Cost:** free tier sleeps when idle → keep-alive pinger required (R3).
 
@@ -70,11 +70,11 @@ Keeps the webhook to one INSERT (500 ms budget) and makes the FX step part of th
 **Why fixed:** deterministic tests, no extra network dependency inside the 30 s path, offline-friendly. **Cost:** rates go stale. Current values are an owner-supplied snapshot (2026-11-03); refresh via `FX_RATES_TO_INR` / `FX_RATES_AS_OF`.
 
 ## D17 - Money is `Decimal`, stored `NUMERIC(18,4)`, displayed to 2 dp with banker's rounding  *(confirmed rounding)*
-Floats cannot represent money exactly. Rounding (ROUND_HALF_EVEN) happens **only** when producing display values; stored values keep 4 dp. Display in the transaction's own currency returns the original amount unchanged (no INR round-trip drift). JSON output uses numbers (`17.86`), as the spec shows.
+Floats cannot represent money exactly. Rounding (ROUND_HALF_EVEN) happens **only** when producing display values; stored values keep 4 dp. Display in the transaction's own currency returns the original amount unchanged (no INR round-trip drift). JSON output uses numbers (`15.83`, for 1500 INR at 94.75), as the spec shows.
 **Known limit:** JSON numbers are binary floats once parsed by a client; fine for 2 dp display, don't do arithmetic on them.
 
-## D18 - GET `/v1/transactions/{id}` returns a one-element array, as in `backend.md`  *(owner-confirmed, revised 2026-11-04)*
-`backend.md` sketches the response as `[{...}]`. Originally the owner chose a single object; on 2026-11-04, after checking the service against the spec, the owner switched back to the array so that a client or grader written to the sketch (`response.json()[0]`) works. Unknown id → `404` (the spec is silent; `assumptions.md` A1). A separate list endpoint exists for the dashboard and returns `{items, total, limit, offset}`.
+## D18 - GET `/v1/transactions/{id}` returns a one-element array, as in `backend_task.md`  *(owner-confirmed, revised 2026-11-04)*
+`backend_task.md` sketches the response as `[{...}]`. Originally the owner chose a single object; on 2026-11-04, after checking the service against the spec, the owner switched back to the array so that a client or grader written to the sketch (`response.json()[0]`) works. Unknown id → `404` (the spec is silent; `assumptions.md` A1). A separate list endpoint exists for the dashboard and returns `{items, total, limit, offset}`.
 **Cost:** a client that expects a bare object must read element `[0]`. The frontend client already normalises both shapes (`asArray` in `src/lib/api.js`), and `scripts/spec_check.py` now requires the array.
 
 ## D19 - Schema created at startup, no migration tool  *(engineering)*

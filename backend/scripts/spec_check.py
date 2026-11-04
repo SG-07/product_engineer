@@ -1,4 +1,4 @@
-"""Check a running service against backend.md, using the spec's own request bodies.
+"""Check a running service against backend_task.md, using the spec's own request bodies.
 
     python scripts/spec_check.py                          # http://127.0.0.1:8000
     python scripts/spec_check.py --base-url https://txn-webhooks.onrender.com
@@ -8,7 +8,7 @@ id, so it can be repeated against a database that already contains data. Pass
 --spec-id to use the exact id from the spec (txn_abc123def456) on an empty database.
 
 Exit code 0 = every requirement passed; 1 = at least one failure. (The script can also list
-"known deviations" - differences from backend.md that were decided on purpose - which are
+"known deviations" - differences from backend_task.md that were decided on purpose - which are
 shown but do not fail the run. There are currently none.)
 """
 
@@ -88,7 +88,7 @@ def main() -> int:
     obj = first(raw)
     check("returns 200", r.status_code == 200)
     check(
-        "response is a JSON array with one element [{...}] as sketched in backend.md",
+        "response is a JSON array with one element [{...}] as sketched in backend_task.md",
         isinstance(raw, list) and len(raw) == 1,
         f"actual: JSON {type(raw).__name__}",
     )

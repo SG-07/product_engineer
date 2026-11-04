@@ -12,7 +12,7 @@ async def test_unknown_transaction_is_404(h):
 async def test_response_is_a_one_element_array_matching_spec_fields(h):
     await h.client.post(URL, json=payload("txn_shape"))
     raw = (await h.client.get("/v1/transactions/txn_shape")).json()
-    assert isinstance(raw, list) and len(raw) == 1  # backend.md sketches [{...}]
+    assert isinstance(raw, list) and len(raw) == 1  # backend_task.md sketches [{...}]
     body = raw[0]
     for key in (
         "transaction_id", "source_account", "destination_account", "amount", "currency",
