@@ -33,4 +33,4 @@ Things the task description did not say and that I filled in. **None of these ar
 ## Still open (assumed, not answered)
 1. Will test webhooks be signed? Is there a secret to share? (A2, A3, A4) - assumed **unsigned**, `SIGNATURE_REQUIRED=false`.
 2. Are amounts major units or minor units (paise/cents)? (A10) - assumed **major units**, as in the spec's `1500` INR / `150.50` USD samples.
-3. Which region will the database use? Render is in Singapore and Supabase in Seoul; the owner will move it later (`risks.md` R18).
+3. Which region is the database in now? Render is in Singapore. The Supabase project was in Seoul; the owner reports moving it on 2026-11-04, but the latency did not change, so the actual host in `DATABASE_URL` still needs confirming (`risks.md` R18).

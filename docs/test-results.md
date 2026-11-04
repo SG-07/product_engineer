@@ -12,23 +12,23 @@ Related: [testing.md](testing.md) (how to run the tests) · [risks.md](risks.md)
 | `202` within 500 ms, **one sender at a time**, local | **Met.** p95 36 ms (Windows laptop, Postgres in Docker); 13–78 ms per request in manual dashboard use. |
 | `202` within 500 ms, **20 concurrent senders**, local, Linux | **Borderline.** p95 ≈ 460–550 ms; about half the runs pass. |
 | Same, local, **Windows** | **Not met reliably.** p95 ≈ 670–1,200 ms, varies a lot between runs. |
-| `202` within 500 ms on **Render + Supabase** | **Not met.** Server-side time per POST is 500–900 ms. Render is in Singapore, Supabase in Seoul; every database query appears to cost about 400 ms. |
+| `202` within 500 ms on **Render + Supabase** | **Not met.** Server-side time per POST is 477–924 ms, **both before and after the owner moved the database** (2026-11-04); a single read stays at ≈ 400 ms. |
 
-**Biggest finding for deployment:** the deployed latency is dominated by the database being in a different region from the service, not by application code. See bottleneck B1.
+**Biggest finding for deployment:** the time is dominated by the *number of database round trips per request* (about 7 for a simple request, about 14 for a duplicate POST) multiplied by a round trip of **≈ 57–60 ms from Render to the database**. The numbers did not change when the database was moved, so the app is still talking to a database about 60 ms away: either the move did not take effect for this service (check the host in `DATABASE_URL`) or the new database is not near Render. A same-region database should take a few ms per round trip, i.e. ≈ 35 ms per request. See bottleneck B1 and section 5.6.
 
 ## 1.1 Compliance with `backend.md`
 
-Verified on 2026-11-04 against a clean local instance on PostgreSQL (real 30 s delay), using the spec's own request body and `scripts/spec_check.py` (33 of 33 checks pass after the response was switched to the spec's array shape). The Render column comes from the earlier smoke test, run **before** that change, so Render needs a redeploy and a re-run of `spec_check.py`.
+Verified on 2026-11-04 against a clean local instance on PostgreSQL (real 30 s delay), using the spec's own request body and `scripts/spec_check.py` (33 of 33 checks pass after the response was switched to the spec's array shape). The Render column comes from the earlier smoke test (14 of 15 pass), the owner's later dashboard session, and read-only requests; **`spec_check.py` has not yet been run against Render** (it writes about 42 test transactions to the live database).
 
 | Requirement in `backend.md` | Local (Postgres) | Render |
 |---|---|---|
 | `POST /v1/webhooks/transactions` accepts the sample body (`amount` 1500, `INR`) | **Met** | Met |
 | Returns `202 Accepted`, simple acknowledgment body | **Met** (`{"status":"accepted","transaction_id":...}`) | Met |
-| Responds within 500 ms | **Met**: 15–21 ms warm; one run of the very first request after a restart took 693 ms (section 6, B7) | **Not met**: 502–907 ms server-side (B1) |
+| Responds within 500 ms | **Met**: 15–21 ms warm; one run of the very first request after a restart took 693 ms (section 6, B7) | **Not met**: 477–924 ms server-side, before and after the database change (B1) |
 | `GET /` returns `{"status":"HEALTHY","current_time":"…Z"}` | **Met** (exactly those two fields) | Met |
 | `GET /v1/transactions/{id}` returns the listed fields (`transaction_id`, `source_account`, `destination_account`, `amount`, `currency`, `status`, `created_at`, `processed_at`) | **Met** (extra fields also returned: `attempts`, `original_*`, `amount_inr`, `fx_*`, `last_error`) | Met |
 | …`status` is `PROCESSING` then `PROCESSED`; `processed_at` is null while processing | **Met** | Met |
-| …response is an **array** `[{…}]` | **Met** since 2026-11-04 (a one-element array; it was a single object before the owner switched back, `decisions.md` D18). Unknown id still returns `404`, the spec is silent (`assumptions.md` A1) | not yet redeployed |
+| …response is an **array** `[{…}]` | **Met** since 2026-11-04 (a one-element array; it was a single object before the owner switched back, `decisions.md` D18). Unknown id still returns `404`, the spec is silent (`assumptions.md` A1) | **Met** after the redeploy (read-only `GET` of an existing id on 2026-11-04 returned `[{...}]`) |
 | Processing includes a 30 s delay; final result stored in persistent storage | **Met**: `processed_at − created_at` = 30.0 s; stored in Postgres | Met (~31 s) |
 | Idempotency: same `transaction_id` sent repeatedly → one processed transaction, no errors | **Met**: 5 duplicates while processing + 1 after = all `202`, one stored row, `attempts == 1` | Met |
 | Same id with a different payload | Returns `409` (a design choice beyond the spec) | Met |
@@ -43,7 +43,7 @@ Verified on 2026-11-04 against a clean local instance on PostgreSQL (real 30 s d
 | E1 | Windows 11 laptop, `uvicorn`, early development | SQLite file | SQLite allows one writer at a time, so it is **not valid for latency or concurrency conclusions**. |
 | E2 | Same Windows laptop | PostgreSQL 16 in Docker Desktop | Round trip host → database measured at **0.94 ms p50 / 1.6 ms p95**, so the network to the database is not a factor here. |
 | E3 | `python:3.12-slim` Linux container on the same laptop | Same Docker Postgres (via `host.docker.internal`) | Closest local match to Render/CI, which are Linux. |
-| E4 | Render free web service (Singapore) | Supabase free project, **Seoul**, Session pooler | The real deployment: `https://txn-webhooks.onrender.com`. |
+| E4 | Render free web service (Singapore) | Supabase free project, Session pooler: **Seoul** until 2026-11-04, then changed by the owner "to match Render" (the actual region/host after the change is unconfirmed, see B1) | The real deployment: `https://txn-webhooks.onrender.com`. |
 | E5 | GitHub Actions `ubuntu-latest` | Postgres 16 service container | Suite passed on 2026-11-03; latency figures from that run were not read (log needs sign-in). |
 
 ## 3. Correctness results
@@ -111,6 +111,21 @@ The smoke test on 2026-11-04 (04:38 UTC) logged these:
 | `GET /v1/transactions/{id}` | 405–476 ms each (one outlier at 1,176 ms) |
 | `POST` invalid payload (`422`, never touches the database) | 1.6–1.8 ms |
 
+### 4.4 Deployed service after the owner changed the database (2026-11-04, 06:51–06:52 UTC log, dashboard session)
+
+| Request | Server-side time |
+|---|---|
+| `POST` new webhook | 477.3 ms |
+| `POST` duplicate ×4 | 924.3, 805.5, 803.9, 803.7 ms |
+| `GET /v1/transactions/{id}` (steady polling) | 399–416 ms |
+| `GET /v1/transactions?limit=50` | 467–483 ms (one 606–658 ms) |
+| `GET /v1/stats` (cache miss) | 533–551 ms |
+| Six requests at once just after a pause | 810–2,336 ms (new connections being opened, plus queueing) |
+
+Timed from the developer's machine with `curl` (includes ~0.1–0.2 s of internet round trip; `GET /` alone took 0.10–0.21 s): `GET /health/ready` 0.53–0.76 s (one 1.57 s outlier), `GET /v1/transactions/<unknown id>` 0.55–0.67 s.
+
+**Compared with section 4.3 (before the move) these are the same**: single read ≈ 400 vs 405–476 ms, duplicate POST ≈ 804–924 vs 828–907 ms.
+
 The `422` and `GET /` rows show the app and network overhead are small; everything that touches the database costs roughly 400 ms or more.
 
 ## 5. Experiments run
@@ -146,11 +161,31 @@ Sampling `GET /v1/stats` every 250 ms: `api_in_use` peaked at **12 of 20**, and 
 
 `asyncpg.connect()` to the Docker Postgres (`password_encryption = scram-sha-256`), six sequential connects: 37–41 ms each. Five concurrent connects: 157 ms in total, with the longest event-loop stall 85 ms (a 5 ms ticker measured how late the loop woke up). In the earlier Windows profile the HMAC functions were called about 110,000 times during the 20-concurrent run, consistent with password hashing for the connections opened during that run.
 
+### 5.6 Round trips per request: injected 100 ms database round trip (E2)
+
+To find out *why* a request costs ~400 ms on Render, a small TCP proxy (`scratchpad` script, not in the repo) was placed between a local copy of the app and the Docker Postgres, delaying every packet by 50 ms in each direction (round trip 100 ms). Median over 7 requests each, after warming the pool:
+
+| Endpoint | Median | ≈ round trips (÷ 100 ms) |
+|---|---|---|
+| `GET /` (no database) | 4 ms | 0 |
+| `GET /health/ready` | 698 ms | 7 |
+| `GET /v1/transactions/{unknown id}` (404) | 706 ms | 7 |
+| `GET /v1/transactions/{id}` | 697 ms | 7 |
+| `GET /v1/transactions?limit=50` | 841 ms | 8 |
+| `POST` new webhook | 705 ms | 7 |
+| `POST` duplicate webhook | 1,425 ms | 14 |
+| `POST` invalid body (422) | 11 ms | 0 |
+| `GET /v1/stats` | 4 ms | cached for 1 s (one 969 ms cache miss) |
+
+So one simple request makes about 7 sequential database round trips and a duplicate webhook about 14. Dividing the Render timings (section 4.3 and 4.4) by those counts gives an implied round trip of **≈ 57 ms** (read: 400 ms ÷ 7) to **≈ 56–65 ms** (duplicate: 804–924 ms ÷ 14). This is an inference: it assumes Render + Supabase make the same number of round trips as the local run, which is likely (same code and driver) but not measured on Render. It also matches the pre-move numbers (≈ 59 ms), which is why the database move changed nothing.
+
+**What this implies:** with a database a few ms away the same code would take ≈ 35–50 ms per simple request; at ≈ 60 ms it takes ≈ 400 ms. Cutting the number of round trips per request would help at any distance, but that is not implemented (section 9).
+
 ## 6. Bottlenecks, ranked
 
 | # | Bottleneck | Evidence | Confidence |
 |---|---|---|---|
-| **B1** | **Database in another region than the service (deployed).** Render is in Singapore, Supabase in Seoul. A single read costs about 410–475 ms and a POST (insert + duplicate check) 500–900 ms, while non-database requests are 2–84 ms. The app also adds round trips per request (a `SELECT 1` connection check on every checkout, then the query, then commit), which multiplies whatever the distance costs. | Section 4.3; `app/db.py` sets `pool_pre_ping=True` | High that the database round trip is the cost. The exact split between distance and round-trip count is **not measured**; Singapore–Seoul alone is normally 70–90 ms. |
+| **B1** | **Many sequential database round trips per request, each ≈ 57–60 ms from Render to the database (deployed).** A simple request makes ~7 round trips and a duplicate webhook ~14 (section 5.6), so a read costs ~400 ms and a duplicate POST ~800–920 ms, while requests that skip the database take 2–84 ms. Part of the count is the connection check (`pool_pre_ping=True`), the transaction start/end and the driver's prepare-then-execute steps. When the database was in Seoul and Render in Singapore the numbers were the same as after the owner's database change on 2026-11-04, so **the app is still ≈ 60 ms from its database**. | Sections 4.3, 4.4, 5.6; `app/db.py` | High that round trips × distance is the cost (reproduced locally with an injected delay). **Not known** whether the new database is really in Singapore, or whether Render picked up the new `DATABASE_URL`: check the pooler host in that variable (`…ap-southeast-1…` is Singapore, `…ap-northeast-2…` is Seoul). |
 | **B2** | **Background jobs share the event loop and database with the API.** Removing the jobs lowers p95 from ≈ 550 to ≈ 380 ms (Linux) and from ≈ 1,050 to ≈ 670 ms (Windows). Each accepted webhook immediately starts a job that claims the row and writes status changes. | Section 5.1, 5.2 | High (controlled comparison). |
 | **B3** | **Windows development machine.** The same concurrency test gives ≈ 460–550 ms on Linux and ≈ 670–1,200 ms on Windows. Windows uses a different asyncio I/O backend. Does not affect Render. | Section 4.2, 5.1 vs 5.2 | Medium-high. |
 | **B4** | **SQLite single writer.** Concurrent inserts queue up; p95 ≈ 1.1–1.6 s with 20 senders. | Early runs (E1) | High. Not relevant on Postgres. |
@@ -180,13 +215,14 @@ Sampling `GET /v1/stats` every 250 ms: `api_in_use` peaked at **12 of 20**, and 
 
 Listed in the order that looks most valuable; none has been implemented.
 
-1. **Put the database and the service in the same region.** Create a Supabase project in Southeast Asia (Singapore), point `DATABASE_URL` at its Session pooler string, redeploy, then repeat `/health/ready`, `smoke_test.py` and `load_test.py`. Expected to remove most of B1.
-2. **Re-measure the Render pool.** `render.yaml` sets the API pool to 2 + 1; locally larger pools were not better, but 2 + 1 itself was never compared on Render in the new region.
-3. **Lighten the background job's database work.** Fewer statements and transactions per job to reduce B2. This touches the lease logic, so it needs the reliability tests.
-4. **Move processing to a separate worker process.** Removes B2 entirely, at the cost of a second Render service.
-5. **Open the connection pool before traffic arrives** (and avoid frequent recycling), so a burst does not pay ~38 ms × N of blocked event loop (B7). Test by comparing the first request after a restart and the first request of a burst, before and after.
-6. **Fix the test teardown** so connections are disposed, and decide whether the 20-concurrent test should stay a pass/fail gate or become a recorded stress check (B6).
-7. **Read the CI latency figures** from the GitHub Actions log to see the Linux number on a clean runner.
+1. **Check where the app really connects.** In Render's environment for the backend, look at the host in `DATABASE_URL` (do not share the password): `…ap-southeast-1…` is Singapore, `…ap-northeast-2…` is Seoul. Confirm the Supabase project's region in its settings, and that the value was saved and the service redeployed. After a correct move, `GET /v1/transactions/{id}` should drop from ≈ 400 ms to well under 100 ms; if it does not, the round trip is not distance.
+2. **Cut the round trips per request** (about 7 for a simple request, 14 for a duplicate webhook), which helps at any distance: e.g. drop the per-checkout connection check or make reads and the single-statement insert run in autocommit. The injected-delay proxy in section 5.6 can measure the effect locally before deploying. Not implemented; changes the core request path.
+3. **Re-measure the Render pool.** `render.yaml` sets the API pool to 2 + 1; locally larger pools were not better, but 2 + 1 itself was never compared on Render.
+4. **Lighten the background job's database work.** Fewer statements and transactions per job to reduce B2. This touches the lease logic, so it needs the reliability tests.
+5. **Move processing to a separate worker process.** Removes B2 entirely, at the cost of a second Render service.
+6. **Open the connection pool before traffic arrives** (and avoid frequent recycling), so a burst does not pay ~38 ms × N of blocked event loop (B7); if Render's free instance has a small CPU share (not verified here) the cost there could be larger than the local ~38 ms. Test by comparing the first request after a restart and the first request of a burst, before and after.
+7. **Fix the test teardown** so connections are disposed, and decide whether the 20-concurrent test should stay a pass/fail gate or become a recorded stress check (B6).
+8. **Read the CI latency figures** from the GitHub Actions log to see the Linux number on a clean runner.
 
 ## 10. How to reproduce
 

@@ -18,7 +18,7 @@ Amounts are stored in **INR** and can be viewed in **INR, USD, EUR or GBP** (`?c
 | Reliability | A forced kill 3 s after a webhook, then restart: the transaction was recovered and finished as `PROCESSED` 128 s after the restart (slow because of the 90 s lease) |
 | `202` within 500 ms, one sender at a time, local | **Met** (p95 ≈ 30–36 ms; the very first request after a fresh start can take ~700 ms while connections open) |
 | `202` within 500 ms, 20 concurrent senders, local | **Borderline**: p95 ≈ 460–550 ms on Linux, higher on Windows |
-| `202` within 500 ms on Render | **Not met yet**: the database (Supabase, Seoul) and the service (Render, Singapore) are in different regions, so every database request costs ~400 ms |
+| `202` within 500 ms on Render | **Not met yet**: a webhook takes 477–924 ms server-side. Each request makes ~7 sequential database round trips of ≈ 57–60 ms each. Moving the database on 2026-11-04 did not change this, so the app is still ≈ 60 ms from its database (details in [docs/test-results.md](docs/test-results.md)) |
 
 Details, numbers and bottleneck analysis: [docs/test-results.md](docs/test-results.md). Open risks: [docs/risks.md](docs/risks.md).
 
@@ -310,7 +310,7 @@ render.yaml         Render blueprint for the backend (rootDir: backend)
 
 Full list: [docs/risks.md](docs/risks.md). The most important:
 
-- **Latency on Render is above 500 ms** because the database and the service are in different regions (R1, R18). Fix: create the Supabase project in the same region as Render.
+- **Latency on Render is above 500 ms** (R1, R18): every database round trip costs ≈ 57–60 ms and a request makes about 7 of them. It was unchanged after the database was moved, so first check which database host `DATABASE_URL` really points at; reducing the round trips per request would also help.
 - **Unknown transaction id returns `404`**, not an empty array; the spec does not say (R21, [assumptions](docs/assumptions.md) A1).
 - **20 concurrent senders is borderline even locally** (p95 ≈ 460–550 ms on Linux); the 30 s background jobs share the event loop and database with the API, and opening database connections blocks the event loop for ~38 ms each (R10, R19, R22).
 - **Recovery after a hard crash is slow**: a transaction interrupted by a forced kill finished 128 s after the restart (R4).

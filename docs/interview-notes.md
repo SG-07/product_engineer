@@ -26,7 +26,7 @@
 **How would you scale it?** Move jobs to a queue + worker; add Alembic migrations; auth on read endpoints; live FX rates with history; metrics and alerts.
 
 ## Honest limits (say these before being asked)
-- The service works end to end on PostgreSQL (full suite on Docker Postgres 16; smoke test on Render + Supabase). One sender at a time meets the 500 ms target locally (p95 ≈ 36 ms), but the **deployed service does not** yet: Render is in Singapore and the Supabase database in Seoul, so each database request costs ~400 ms. With 20 concurrent senders even a local Linux run sits right at the limit (p95 ≈ 460–550 ms) because the background jobs share the event loop with the API. Numbers and experiments: `test-results.md`.
+- The service works end to end on PostgreSQL (full suite on Docker Postgres 16; smoke test on Render + Supabase). One sender at a time meets the 500 ms target locally (p95 ≈ 36 ms), but the **deployed service does not** yet: on Render each database round trip costs ≈ 57–60 ms and a request makes about 7 of them (≈ 400 ms), and that did not change when the database was moved, so the database location still needs checking. With 20 concurrent senders even a local Linux run sits right at the limit (p95 ≈ 460–550 ms) because the background jobs share the event loop with the API. Numbers and experiments: `test-results.md`.
 - FX rates are a fixed snapshot (2026-11-03), not live. Signatures were only tested with self-made HMACs.
 - The list endpoint is unauthenticated.
 - Free-tier Render sleeps; it needs a pinger.
