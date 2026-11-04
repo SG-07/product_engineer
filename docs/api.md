@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL: `http://127.0.0.1:8000` locally, `https://<service>.onrender.com` deployed. Live, interactive version: `/docs` (Swagger) and `/openapi.json`.
+Base URL: `http://127.0.0.1:8000` locally, `https://txn-webhooks.onrender.com` deployed. Live, interactive version: `/docs` (Swagger) and `/openapi.json`.
 All bodies are JSON. Timestamps are UTC ISO-8601 with `Z`. Every response carries `X-Response-Time-Ms`.
 CORS is enabled for the origins in `CORS_ORIGINS` (GET, POST, OPTIONS).
 
@@ -34,12 +34,14 @@ Request
 `200 {"status":"HEALTHY","current_time":"2026-11-03T17:25:23Z"}` - no DB call; safe for frequent pings.
 `GET /health/ready` - same shape, but runs `SELECT 1`; `503 {"status":"UNHEALTHY",...}` if the DB is unreachable.
 
+`GET /dashboard` - `307` redirect to `FRONTEND_URL` (the frontend dashboard). `404 {"detail":"FRONTEND_URL is not configured"}` when the variable is unset. `GET /` is unchanged and still returns the health JSON.
+
 ---
 ## GET `/v1/transactions/{transaction_id}`
 Query: `currency` (optional) - `INR|USD|EUR|GBP`, case-insensitive.
 
 ```json
-{
+[{
   "transaction_id": "txn_abc123def456",
   "source_account": "acc_user_789",
   "destination_account": "acc_merchant_456",
@@ -51,9 +53,9 @@ Query: `currency` (optional) - `INR|USD|EUR|GBP`, case-insensitive.
   "last_error": null,
   "created_at": "2024-01-15T10:30:00Z",
   "processed_at": "2024-01-15T10:30:30Z"             // null while PROCESSING/FAILED
-}
+}]
 ```
-- Single **object** (not an array).
+- Returns a **JSON array with exactly one element**, as sketched in `backend.md` (`[{...}]`). An unknown id returns `404`, not an empty array (`assumptions.md` A1).
 - `amount`/`currency`: with `?currency=X` → converted (banker's rounding, 2 dp). Without → exactly as received. Asking for the currency it was received in returns the original amount unchanged.
 - `404 {"detail":"Transaction not found"}` · `422 {"detail":"Unsupported currency 'JPY'. Supported: INR, USD, EUR, GBP"}`
 

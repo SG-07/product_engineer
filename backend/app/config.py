@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     # --- HTTP -----------------------------------------------------------------
     cors_origins: str = "http://localhost:5173"  # comma-separated, or "*"
+    frontend_url: str | None = None  # where GET /dashboard redirects; unset = no redirect
 
     # --- Currency -------------------------------------------------------------
     fx_rates_to_inr: dict[str, Decimal] = Field(default_factory=lambda: dict(DEFAULT_FX_RATES_TO_INR))
@@ -63,9 +64,9 @@ class Settings(BaseSettings):
     # --- Misc -------------------------------------------------------------------
     log_level: str = "INFO"
 
-    @field_validator("webhook_secret", mode="before")
+    @field_validator("webhook_secret", "frontend_url", mode="before")
     @classmethod
-    def _empty_secret_is_none(cls, v: object) -> object:
+    def _empty_is_none(cls, v: object) -> object:
         return None if isinstance(v, str) and not v.strip() else v
 
     @field_validator("fx_rates_to_inr")

@@ -16,7 +16,7 @@ from app.db import Database
 from app.metrics import Metrics
 from app.processor import Processor
 from app.recovery import RecoverySweeper
-from app.routers import currencies, health, stats, transactions, webhooks
+from app.routers import currencies, dashboard, health, stats, transactions, webhooks
 
 log = logging.getLogger("app")
 
@@ -79,6 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ),
         lifespan=lifespan,
     )
+    if settings.frontend_url:
+        app.description += f"\n\nDashboard: {settings.frontend_url} (also at GET /dashboard)"
 
     app.add_middleware(
         CORSMiddleware,
@@ -115,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(currencies.router)
     app.include_router(stats.router)
+    app.include_router(dashboard.router)
     return app
 
 

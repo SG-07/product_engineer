@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(TEST_DATABASE_URL=\"postgresql://postgres:postgres@127.0.0.1:5432/test\" .venv/Scripts/python.exe -m pytest -q -rs)",
+      "Bash(TEST_DATABASE_URL=\"postgresql://postgres:postgres@127.0.0.1:5432/test\" .venv/Scripts/python.exe -m pytest -q -p no:logging -rfE)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(export TEST_DATABASE_URL=\"postgresql://postgres:postgres@127.0.0.1:5432/test\")",
+      "Bash(.venv/Scripts/python.exe -m pytest -q -p no:logging -s tests/test_tmp_bg_experiment.py)",
+      "Bash(.venv/Scripts/python.exe -m pytest -q -p no:logging -s tests/test_tmp_profile.py)",
+      "Bash(sed -n '/PROFILE_BEGIN/,/PROFILE_END/p' profile_raw.txt)"
+    ]
+  }
+}

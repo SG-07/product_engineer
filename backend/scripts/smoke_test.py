@@ -65,13 +65,14 @@ def main() -> int:
 
         print("4. Status while processing")
         r = c.get(f"/v1/transactions/{txn}")
-        j = r.json()
+        j = r.json()[0] if r.status_code == 200 and r.json() else {}
         check("status is PROCESSING, processed_at is null", j.get("status") == "PROCESSING" and j.get("processed_at") is None, r.text)
 
         print("5. Waiting for processing (~30 s)...")
         j = {}
         while time.time() - sent_at < args.timeout:
-            j = c.get(f"/v1/transactions/{txn}?currency=INR").json()
+            rows = c.get(f"/v1/transactions/{txn}?currency=INR").json()
+            j = rows[0] if isinstance(rows, list) and rows else {}
             if j.get("status") in ("PROCESSED", "FAILED"):
                 break
             time.sleep(2)
@@ -85,7 +86,7 @@ def main() -> int:
 
         print("6. Display currency + errors")
         r = c.get(f"/v1/transactions/{txn}?currency=EUR")
-        check("?currency=EUR returns EUR", r.status_code == 200 and r.json()["currency"] == "EUR", r.text)
+        check("?currency=EUR returns EUR", r.status_code == 200 and r.json()[0]["currency"] == "EUR", r.text)
         check("unknown id returns 404", c.get("/v1/transactions/does_not_exist_xyz").status_code == 404)
         check("invalid payload returns 422", c.post(url, json={**body, "amount": -1}).status_code == 422)
         check("unsupported currency returns 422", c.post(url, json={**body, "currency": "JPY"}).status_code == 422)

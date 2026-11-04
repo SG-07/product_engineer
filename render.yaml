@@ -18,7 +18,9 @@ services:
       - key: WEBHOOK_SECRET         # optional; set in the dashboard
         sync: false
       - key: CORS_ORIGINS           # frontend origin(s), comma-separated
-        value: http://localhost:5173
+        value: https://product-engineer.onrender.com,http://localhost:5173
+      - key: FRONTEND_URL           # GET /dashboard redirects here
+        value: https://product-engineer.onrender.com
       - key: API_DB_POOL_SIZE       # small on purpose; keep only if load_test.py is no worse than 5+5
         value: "2"
       - key: API_DB_MAX_OVERFLOW

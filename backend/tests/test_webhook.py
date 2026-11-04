@@ -16,7 +16,7 @@ async def test_row_is_stored_as_processing_immediately(h):
     await h.client.post(URL, json=payload("txn_store"))
     r = await h.client.get("/v1/transactions/txn_store")
     assert r.status_code == 200
-    body = r.json()
+    body = r.json()[0]
     assert body["status"] == "PROCESSING"
     assert body["processed_at"] is None
     assert body["amount_inr"] is None
@@ -25,7 +25,7 @@ async def test_row_is_stored_as_processing_immediately(h):
 async def test_lowercase_currency_is_normalised(h):
     r = await h.client.post(URL, json=payload("txn_lower", currency="usd", amount=150.50))
     assert r.status_code == 202
-    body = (await h.client.get("/v1/transactions/txn_lower")).json()
+    body = (await h.client.get("/v1/transactions/txn_lower")).json()[0]
     assert body["original_currency"] == "USD"
     assert body["original_amount"] == 150.5
 

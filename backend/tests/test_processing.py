@@ -10,7 +10,7 @@ URL = "/v1/webhooks/transactions"
 async def test_transaction_is_processed_after_the_delay(make_harness):
     async with make_harness(processing_delay_seconds=1.0) as h:
         await h.client.post(URL, json=payload("txn_delay"))
-        assert (await h.client.get("/v1/transactions/txn_delay")).json()["status"] == "PROCESSING"
+        assert (await h.client.get("/v1/transactions/txn_delay")).json()[0]["status"] == "PROCESSING"
         done = await wait_for_status(h.client, "txn_delay")
         assert done["status"] == "PROCESSED"
         async with h.session() as s:

@@ -2,7 +2,7 @@
  * In-browser mock of the webhook backend, mirroring the real contract (docs/api.md):
  *  GET  /                              -> 200 { status, current_time }
  *  POST /v1/webhooks/transactions      -> 202 { status: 'accepted'|'duplicate' } | 409 | 422
- *  GET  /v1/transactions/{id}?currency -> 200 {record} | 404
+ *  GET  /v1/transactions/{id}?currency -> 200 [record] (one-element array, like the real backend) | 404
  *  GET  /v1/transactions?status&limit&currency -> 200 { items, total, limit, offset }
  *  GET  /v1/currencies, GET /v1/stats
  * Status is derived lazily: PROCESSED once `mockDelaySeconds` have elapsed.
@@ -155,7 +155,7 @@ export async function mockFetch(method, path, body) {
   const match = p.match(/^\/v1\/transactions\/([^/]+)$/)
   if (method === 'GET' && match) {
     const row = db[decodeURIComponent(match[1])]
-    return row ? json(200, materialize(row, url.searchParams.get('currency')), serverMs) : json(404, { detail: 'Transaction not found' }, serverMs)
+    return row ? json(200, [materialize(row, url.searchParams.get('currency'))], serverMs) : json(404, { detail: 'Transaction not found' }, serverMs)
   }
 
   return json(404, { detail: 'Not found' }, serverMs)

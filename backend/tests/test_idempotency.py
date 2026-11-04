@@ -33,7 +33,7 @@ async def test_duplicate_after_processing_does_not_reprocess(h):
     r = await h.client.post(URL, json=payload("txn_after"))
     assert r.status_code == 202 and r.json()["status"] == "duplicate"
     await asyncio.sleep(h.settings.processing_delay_seconds * 2)
-    again = (await h.client.get("/v1/transactions/txn_after")).json()
+    again = (await h.client.get("/v1/transactions/txn_after")).json()[0]
     assert again["status"] == "PROCESSED"
     assert again["processed_at"] == first["processed_at"]
     assert again["attempts"] == 1
@@ -50,7 +50,7 @@ async def test_same_id_different_amount_is_409(h):
     r = await h.client.post(URL, json=payload("txn_conf", amount=9999))
     assert r.status_code == 409
     assert r.json()["transaction_id"] == "txn_conf"
-    stored = (await h.client.get("/v1/transactions/txn_conf")).json()
+    stored = (await h.client.get("/v1/transactions/txn_conf")).json()[0]
     assert stored["original_amount"] == 1500  # original is untouched
 
 

@@ -38,4 +38,4 @@ async def test_failed_transaction_duplicate_is_not_reprocessed(make_harness):
         await wait_for_status(h.client, "txn_fail_dup")
         r = await h.client.post(URL, json=payload("txn_fail_dup"))
         assert r.json()["status"] == "duplicate"
-        assert (await h.client.get("/v1/transactions/txn_fail_dup")).json()["attempts"] == 1
+        assert (await h.client.get("/v1/transactions/txn_fail_dup")).json()[0]["attempts"] == 1

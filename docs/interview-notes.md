@@ -11,7 +11,7 @@
 ## Questions you may be asked
 **Why not Celery/Redis?** One service and no broker to run is right for this size, and reliability comes from the DB row, not the queue. If processing becomes real, CPU-heavy work, move it to a worker - `Processor.schedule()` is the single place to change.
 
-**What if the server crashes after replying 202?** The row was committed before the 202, so it's safe. On restart the sweeper finds rows that are still PROCESSING with no live owner and re-runs them. I tested a hard kill: it finished 123 s after restart (lease expiry + sweep + the 30 s wait).
+**What if the server crashes after replying 202?** The row was committed before the 202, so it's safe. On restart the sweeper finds rows that are still PROCESSING with no live owner and re-runs them. I tested a forced kill 3 s after a webhook, on SQLite and on Postgres: the row survived and finished 123 s and 128 s after the restart (lease expiry + sweep + the 30 s wait). Slow, but nothing was lost.
 
 **What if the same webhook arrives twice at the same moment?** Both hit the INSERT; Postgres lets one through. The other gets "duplicate". Tested with 20 simultaneous identical requests: one accepted, 19 duplicates, processed once.
 
@@ -26,7 +26,7 @@
 **How would you scale it?** Move jobs to a queue + worker; add Alembic migrations; auth on read endpoints; live FX rates with history; metrics and alerts.
 
 ## Honest limits (say these before being asked)
-- All testing so far ran on SQLite. The Postgres path and the Render deployment are the first things to verify; the 500 ms target under 20 concurrent senders is **not yet proven** (SQLite gave ~1.1–1.6 s p95 because it allows one writer at a time).
+- The service works end to end on PostgreSQL (full suite on Docker Postgres 16; smoke test on Render + Supabase). One sender at a time meets the 500 ms target locally (p95 ≈ 36 ms), but the **deployed service does not** yet: Render is in Singapore and the Supabase database in Seoul, so each database request costs ~400 ms. With 20 concurrent senders even a local Linux run sits right at the limit (p95 ≈ 460–550 ms) because the background jobs share the event loop with the API. Numbers and experiments: `test-results.md`.
 - FX rates are a fixed snapshot (2026-11-03), not live. Signatures were only tested with self-made HMACs.
 - The list endpoint is unauthenticated.
 - Free-tier Render sleeps; it needs a pinger.

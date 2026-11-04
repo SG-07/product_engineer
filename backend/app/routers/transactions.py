@@ -1,4 +1,5 @@
-"""Read endpoints: one transaction, or a paginated list. `?currency=` picks the display currency."""
+"""Read endpoints: one transaction (as a one-element array, as sketched in backend.md), or a paginated list.
+`?currency=` picks the display currency."""
 
 from __future__ import annotations
 
@@ -76,8 +77,8 @@ def to_out(txn: Transaction, currency: str | None, settings: Settings) -> Transa
 
 @router.get(
     "/{transaction_id}",
-    response_model=TransactionOut,
-    summary="Get one transaction's status",
+    response_model=list[TransactionOut],
+    summary="Get one transaction's status (a one-element array, as in backend.md)",
     responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 async def get_transaction(
@@ -85,12 +86,12 @@ async def get_transaction(
     currency: str | None = CURRENCY_QUERY,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
-) -> TransactionOut:
+) -> list[TransactionOut]:
     code = _parse_currency(currency)
     txn = await repo.get(session, transaction_id)
     if txn is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    return to_out(txn, code, settings)
+    return [to_out(txn, code, settings)]
 
 
 @router.get("", response_model=TransactionList, summary="List transactions (newest first)")

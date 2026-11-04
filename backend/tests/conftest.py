@@ -101,7 +101,7 @@ async def wait_for_status(client: httpx.AsyncClient, txn_id: str, statuses=("PRO
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         r = await client.get(f"/v1/transactions/{txn_id}")
-        if r.status_code == 200 and r.json()["status"] in statuses:
-            return r.json()
+        if r.status_code == 200 and r.json()[0]["status"] in statuses:
+            return r.json()[0]
         await asyncio.sleep(0.05)
     raise AssertionError(f"{txn_id} did not reach {statuses} within {timeout}s (last: {r.status_code} {r.text})")

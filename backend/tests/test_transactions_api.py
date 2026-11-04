@@ -9,10 +9,11 @@ async def test_unknown_transaction_is_404(h):
     assert r.json() == {"detail": "Transaction not found"}
 
 
-async def test_response_is_a_single_object_matching_spec_fields(h):
+async def test_response_is_a_one_element_array_matching_spec_fields(h):
     await h.client.post(URL, json=payload("txn_shape"))
-    body = (await h.client.get("/v1/transactions/txn_shape")).json()
-    assert isinstance(body, dict)
+    raw = (await h.client.get("/v1/transactions/txn_shape")).json()
+    assert isinstance(raw, list) and len(raw) == 1  # backend.md sketches [{...}]
+    body = raw[0]
     for key in (
         "transaction_id", "source_account", "destination_account", "amount", "currency",
         "status", "created_at", "processed_at",
@@ -23,27 +24,27 @@ async def test_response_is_a_single_object_matching_spec_fields(h):
 
 async def test_no_currency_param_returns_amount_as_received(h):
     await h.client.post(URL, json=payload("txn_asis", amount=150.50, currency="USD"))
-    body = (await h.client.get("/v1/transactions/txn_asis")).json()
+    body = (await h.client.get("/v1/transactions/txn_asis")).json()[0]
     assert body["amount"] == 150.5 and body["currency"] == "USD"
 
 
 async def test_display_currency_conversion_with_bankers_rounding(h):
     await h.client.post(URL, json=payload("txn_disp", amount=1500, currency="INR"))
     await wait_for_status(h.client, "txn_disp")
-    usd = (await h.client.get("/v1/transactions/txn_disp?currency=USD")).json()
+    usd = (await h.client.get("/v1/transactions/txn_disp?currency=USD")).json()[0]
     assert usd["currency"] == "USD" and usd["amount"] == 17.86  # 1500/84 = 17.857...
-    eur = (await h.client.get("/v1/transactions/txn_disp?currency=eur")).json()  # case-insensitive
+    eur = (await h.client.get("/v1/transactions/txn_disp?currency=eur")).json()[0]  # case-insensitive
     assert eur["currency"] == "EUR" and eur["amount"] == 16.48  # 1500/91 = 16.483...
-    gbp = (await h.client.get("/v1/transactions/txn_disp?currency=GBP")).json()
+    gbp = (await h.client.get("/v1/transactions/txn_disp?currency=GBP")).json()[0]
     assert gbp["amount"] == 13.76  # 1500/109 = 13.761...
-    inr = (await h.client.get("/v1/transactions/txn_disp?currency=INR")).json()
+    inr = (await h.client.get("/v1/transactions/txn_disp?currency=INR")).json()[0]
     assert inr["amount"] == 1500.0
     assert usd["original_amount"] == 1500 and usd["original_currency"] == "INR"
 
 
 async def test_display_conversion_works_while_processing(h):
     await h.client.post(URL, json=payload("txn_early", amount=100, currency="USD"))
-    body = (await h.client.get("/v1/transactions/txn_early?currency=INR")).json()
+    body = (await h.client.get("/v1/transactions/txn_early?currency=INR")).json()[0]
     assert body["status"] == "PROCESSING"
     assert body["amount"] == 8400.0 and body["amount_inr"] is None
 

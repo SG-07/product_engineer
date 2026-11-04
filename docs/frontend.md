@@ -2,7 +2,7 @@
 
 **Audience:** the developer building the UI. **Owner of the backend:** see `README.md`.
 
-> **Status (2026-11-04):** the dashboard in `frontend/` is implemented against this spec. Added since the first draft: a live status strip (`GET /v1/stats`), a live pipeline board (Processing / Processed / Failed with a countdown), and a latency panel comparing browser-measured time with the server's `X-Response-Time-Ms`. Polling is kept light on purpose (the API DB pool is small): stats every 3 s while work is processing else 10 s, the list every 3 s / 15 s, health 10 s, all paused when the tab is hidden; the load test checks status with one list request instead of one request per transaction. Run it with `VITE_USE_MOCK=false VITE_API_BASE_URL=<backend>` (mock mode is the default). The rest of this file is the original spec.
+> **Status (2026-11-04):** the dashboard in `frontend/` is implemented against this spec. Added since the first draft: a live status strip (`GET /v1/stats`), a live pipeline board (Processing / Processed / Failed with a countdown), and a latency panel comparing browser-measured time with the server's `X-Response-Time-Ms`. Polling is kept light on purpose (the API DB pool is small): stats every 3 s while work is processing else 10 s, the list every 3 s / 15 s, health 10 s, all paused when the tab is hidden; the load test checks status with one list request instead of one request per transaction. Run it with `VITE_USE_MOCK=false VITE_API_BASE_URL=<backend>` (mock mode is the default). Install, run, deploy and troubleshooting steps for the dashboard are in the main [README](../README.md) ("Install and run locally", "Using the dashboard", "Deploy the frontend") and in [frontend/README.md](../frontend/README.md). Note: the "Use mock API" switch in Settings is saved in the browser and overrides `VITE_USE_MOCK`. The rest of this file is the original spec.
 
 ## 1. Goal
 A small dashboard to demo and inspect the webhook service: send test webhooks, watch them move from `PROCESSING` to `PROCESSED`, see duplicates being ignored, and view money in the viewer's preferred currency (INR / USD / EUR / GBP).
@@ -15,7 +15,7 @@ Suggested (optional) additions: `react-router-dom`, `@tanstack/react-query` (pol
 ## 3. Configuration
 | Env var | Example | Meaning |
 |---|---|---|
-| `VITE_API_BASE_URL` | `http://127.0.0.1:8000` or `https://<service>.onrender.com` | Backend base URL, no trailing slash |
+| `VITE_API_BASE_URL` | `http://127.0.0.1:8000` or `https://txn-webhooks.onrender.com` | Backend base URL, no trailing slash |
 
 Windows: prefer `127.0.0.1` over `localhost` for the backend URL (a `localhost` connection can stall ~2 s per request).
 Tell the backend owner your deployed origin so it is added to `CORS_ORIGINS`; until then, browser calls from it fail with a CORS error.
@@ -27,7 +27,7 @@ Full reference: `docs/api.md`. Summary:
 |---|---|
 | `GET /` | health badge. `{"status":"HEALTHY","current_time"}` |
 | `POST /v1/webhooks/transactions` | send a test webhook → `202 {"status":"accepted"\|"duplicate"}`, `409`, `422` |
-| `GET /v1/transactions/{id}?currency=XXX` | one transaction (single object); `404` if unknown |
+| `GET /v1/transactions/{id}?currency=XXX` | one transaction as a one-element array `[{...}]` (the client unwraps it); `404` if unknown |
 | `GET /v1/transactions?status=&currency=&limit=&offset=` | table data → `{items,total,limit,offset}` |
 | `GET /v1/currencies` | supported currencies + rates + `as_of` date |
 | `GET /v1/stats` | live counts, server-side latency, DB pool use (see `docs/api.md`) |
@@ -71,6 +71,6 @@ Error handling: `422` bodies have `detail` as an **array** for webhook payload e
 User accounts/login, server-side preferences, live exchange rates, editing or deleting transactions, signing webhooks in the browser.
 
 ## 9. Open items to settle with the backend owner
-- Final deployed backend URL, and your deployed frontend origin (for CORS).
-- How often the fixed FX rates get refreshed (they are a snapshot dated by `as_of`, not live) - show that date in the UI.
+- ~~Final deployed backend URL, and your deployed frontend origin (for CORS).~~ **Settled 2026-11-04:** backend `https://txn-webhooks.onrender.com`, frontend `https://product-engineer.onrender.com`. The backend's CORS preflight accepts that origin.
+- ~~How often the fixed FX rates get refreshed.~~ **Settled 2026-11-04:** the rates are a fixed snapshot supplied by the owner on 2026-11-03, with no refresh schedule; the UI shows the `as_of` date.
 - Whether the unauthenticated list endpoint will stay (see `risks.md` R9) - the table screen depends on it.

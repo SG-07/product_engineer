@@ -75,7 +75,7 @@ Partial index on `(locked_until) WHERE status='PROCESSING'` keeps the sweeper ch
 | Same webhook ×N, even simultaneously | 1 row, processed once | `test_idempotency` (20 concurrent) |
 | Same id, different amount | `409`, original kept | `test_idempotency` |
 | Crash right after INSERT, before task starts | Sweeper picks it up on the first sweep after it has sat unclaimed ≥ 10 s (sweeps run every 30 s) | `test_recovery` |
-| Worker dies mid-processing (hard kill) | Lease expires → sweeper re-runs; **~2 min worst case** | `test_recovery`; manual kill test (123 s) |
+| Worker dies mid-processing (hard kill) | Lease expires → sweeper re-runs; **~2 min worst case** | `test_recovery`; manual kill tests (123 s on SQLite, 128 s on Postgres) |
 | Graceful restart/deploy | Tasks cancelled, leases released, resumed on next start | `test_recovery` |
 | External step fails | Retry with backoff, then `FAILED` | `test_failures_retries` |
 | Database down during webhook | `503` → sender retries | code path; **no dedicated test** |
